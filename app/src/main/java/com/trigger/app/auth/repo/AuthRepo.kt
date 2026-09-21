@@ -8,14 +8,21 @@ import android.app.Activity
 interface AuthRepo {
 
     /**
-     * Authenticates using the phone number provided
+     * Authenticates using the phone number provided.
      *
+     * @param phoneNumber        E.164 formatted phone number (with country code).
+     * @param activity           The calling Activity (required by Firebase for reCAPTCHA fallback).
+     * @param onCodeSent         Invoked when Firebase has actually sent the SMS — the UI uses this to
+     *                           switch out of the "Sending SMS…" state into "Enter the code".
+     * @param onVerificationDone Invoked when verification finishes. `true` on success, `false` on
+     *                           failure (e.g. invalid credential, auto-verify failure, quota exceeded).
      *
-     * If the method had already been called, the forceResendingToken which is stored in the AuthRepoImpl is used
+     * If the method had already been called, the stored forceResendingToken is used to resend the SMS.
      */
     fun authenticateWithNumber(
         phoneNumber: String,
         activity: Activity,
+        onCodeSent: () -> Unit = {},
         onVerificationDone: (Boolean) -> Unit
     )
 

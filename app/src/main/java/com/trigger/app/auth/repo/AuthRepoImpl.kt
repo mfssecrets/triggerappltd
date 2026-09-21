@@ -22,41 +22,50 @@ class AuthRepoImpl : AuthRepo {
      *
      * @param onVerificationDone - (Boolean) is true if the verification was successful
      */
-    private fun getVerificationCallbacks(onVerificationDone: (Boolean) -> Unit) =
-        object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+    private fun getVerificationCallbacks(
+        onCodeSent: () -> Unit,
+        onVerificationDone: (Boolean) -> Unit
+    ) = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
 
-            override fun onVerificationCompleted(authCredential: PhoneAuthCredential) {
-                Firebase.auth.signInWithCredential(authCredential).addOnCompleteListener { task ->
-                    Timber.d("task.isSuccessful is ${task.isSuccessful}")
-                    onVerificationDone(task.isSuccessful)
-                }
-            }
-
-            override fun onVerificationFailed(firebaseException: FirebaseException) {
-                Timber.e(firebaseException)
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                forceResendingToken: PhoneAuthProvider.ForceResendingToken
-            ) {
-                super.onCodeSent(verificationId, forceResendingToken)
-
-                storedVerificationId = verificationId
-                resendToken = forceResendingToken
+        // Auto-verification (instant) — Firebase retrieved the SMS itself.
+        override fun onVerificationCompleted(authCredential: PhoneAuthCredential) {
+            Firebase.auth.signInWithCredential(authCredential).addOnCompleteListener { task ->
+                Timber.d("task.isSuccessful is ${task.isSuccessful}")
+                onVerificationDone(task.isSuccessful)
             }
         }
+
+        override fun onVerificationFailed(firebaseException: FirebaseException) {
+            Timber.e(firebaseException)
+            onVerificationDone(false)
+        }
+
+        // SMS was actually delivered to the user's phone. Time to switch the UI
+        // from "Sending…" to "Enter the code".
+        override fun onCodeSent(
+            verificationId: String,
+            forceResendingToken: PhoneAuthProvider.ForceResendingToken
+        ) {
+            super.onCodeSent(verificationId, forceResendingToken)
+
+            storedVerificationId = verificationId
+            resendToken = forceResendingToken
+
+            onCodeSent()
+        }
+    }
 
     override fun authenticateWithNumber(
         phoneNumber: String,
         activity: Activity,
+        onCodeSent: () -> Unit,
         onVerificationDone: (Boolean) -> Unit
     ) {
         val phoneAuthOptions = PhoneAuthOptions.newBuilder()
             .setPhoneNumber(phoneNumber)
-            .setTimeout(30L, TimeUnit.SECONDS)
+            .setTimeout(60L, TimeUnit.SECONDS)         // 60-second Firebase timeout (was 30s)
             .setActivity(activity)
-            .setCallbacks(getVerificationCallbacks(onVerificationDone))
+            .setCallbacks(getVerificationCallbacks(onCodeSent, onVerificationDone))
             .apply {
                 resendToken?.let {
                     setForceResendingToken(it)

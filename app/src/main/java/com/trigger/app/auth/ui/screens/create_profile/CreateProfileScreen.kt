@@ -2,15 +2,18 @@ package com.trigger.app.auth.ui.screens.create_profile
 
 import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -55,10 +59,11 @@ import com.trigger.app.core.presentation.ui.components.DefaultScreen
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.theme.AppTheme
-import com.trigger.app.core.presentation.ui.theme.DarkBlue
-import com.trigger.app.core.presentation.ui.theme.Poppins
+import com.trigger.app.core.presentation.ui.theme.Montserrat
 import com.trigger.app.core.presentation.ui.theme.QuickSand
-import com.trigger.app.core.presentation.ui.theme.SelectionBlue
+import com.trigger.app.core.presentation.ui.theme.WelcomeGradientBottom
+import com.trigger.app.core.presentation.ui.theme.WelcomeGradientMid
+import com.trigger.app.core.presentation.ui.theme.WelcomeGradientTop
 import com.trigger.app.core.utils.DefaultCropContract
 
 @Composable
@@ -68,153 +73,150 @@ fun CreateProfileScreen(
     phoneNumber: String
 ) {
     val viewModel = viewModel<CreateProfileViewModel>()
+
+    val name by viewModel.name.collectAsState()
+    val bio by viewModel.bio.collectAsState()
+    val profilePic by viewModel.profilePic.collectAsState()
+
+    var galleryIsOpen by remember { mutableStateOf(false) }
+    var shouldOpenGallery by remember { mutableStateOf(false) }
+
+    val launcher =
+        rememberLauncherForActivityResult(contract = CropImageContract()) { imageURI ->
+            galleryIsOpen = false
+            imageURI.uriContent?.let { uri ->
+                viewModel.updateProfilePic(uri)
+            }
+        }
+
+    LaunchedEffect(key1 = shouldOpenGallery) {
+        if (shouldOpenGallery && !galleryIsOpen) {
+            galleryIsOpen = true
+            launcher.launch(DefaultCropContract)
+        }
+    }
+
+    val gradientBrush = Brush.verticalGradient(
+        colors = listOf(
+            WelcomeGradientTop,
+            WelcomeGradientMid,
+            WelcomeGradientMid,
+            WelcomeGradientBottom,
+        )
+    )
+
+    val scrollState = rememberScrollState()
+
     Box(
-        Modifier
+        modifier = Modifier
             .fillMaxSize()
+            .background(gradientBrush)
+            .imePadding()
     ) {
         DefaultScreen(
-            navController = navController,
             modifier = Modifier
-                .padding(top = 4.dp)
-                .padding(horizontal = 8.dp)
-                .imePadding()
+                .padding(top = 40.dp)
+                .padding(horizontal = 16.dp),
+            surfaceColor = Color.Transparent,
+            backgroundColor = Color.Transparent,
+            appBar = { Spacer(modifier = Modifier.height(0.dp)) }
         ) {
-
-            val name by viewModel.name.collectAsState()
-            val bio by viewModel.bio.collectAsState()
-            val profilePic by viewModel.profilePic.collectAsState()
-
-            var galleryIsOpen by remember { mutableStateOf(false) }
-            var shouldOpenGallery by remember { mutableStateOf(false) }
-
-
-            val launcher =
-                rememberLauncherForActivityResult(contract = CropImageContract()) { imageURI ->
-                    galleryIsOpen = false
-
-                    imageURI.uriContent?.let { uri ->
-                        viewModel.updateProfilePic(uri)
-                    }
-                }
-
-            LaunchedEffect(key1 = shouldOpenGallery) {
-                // If we should open gallery && it was already closed, open gallery
-                if (shouldOpenGallery && !galleryIsOpen) {
-                    galleryIsOpen = true
-                    launcher.launch(DefaultCropContract)
-                }
-            }
-
-
-            val scrollState = rememberScrollState()
-
-            // I would have used task State for this but it simply isn't loading
-            // TODO: Fix this
-            Box(Modifier.fillMaxSize()) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.profile_info),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontFamily = QuickSand,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    modifier = Modifier.padding(top = 12.dp)
                 )
-                {
-                    Text(
-                        text = stringResource(R.string.profile_info),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(top = 12.dp)
+
+                Text(
+                    text = stringResource(R.string.provide_name_and_profile_photo),
+                    fontFamily = Montserrat,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                Box(Modifier.padding(top = 24.dp)) {
+                    UserIcon(
+                        profilePic = profilePic?.toString(),
+                        iconSize = 120.dp,
+                        progressBarSize = 32.dp,
+                        progressBarThickness = 3.dp,
+                        modifier = Modifier,
+                        borderIfUsingDefaultPic = 2.dp,
+                        onClick = { shouldOpenGallery = true }
                     )
 
-                    Text(
-                        text = stringResource(R.string.provide_name_and_profile_photo),
-                        fontFamily = Poppins,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                    )
-
-                    Box(Modifier) {
-                        UserIcon(
-                            profilePic = profilePic?.toString(),
-                            iconSize = 120.dp,
-                            progressBarSize = 32.dp,
-                            progressBarThickness = 3.dp,
-                            modifier = Modifier.padding(top = 8.dp),
-                            borderIfUsingDefaultPic = 2.dp,
-                            onClick = {
-                                shouldOpenGallery = true
-                            }
+                    IconButton(
+                        onClick = { shouldOpenGallery = true },
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = Color.White,
+                            contentColor = WelcomeGradientTop
                         )
-
-                        IconButton(
-                            onClick = { shouldOpenGallery = true },
-                            modifier = Modifier.align(Alignment.BottomEnd),
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = DarkBlue,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = stringResource(R.string.select_profile_picture_from_galley),
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                    }
-
-                    CreateProfileTextField(
-                        modifier = Modifier.padding(top = 20.dp),
-                        value = name,
-                        placeHolderText = stringResource(R.string.enter_your_name),
-                        onValueChange = {
-                            viewModel.updateName(it)
-                        }
-                    )
-
-                    CreateProfileTextField(
-                        modifier = Modifier.padding(top = 12.dp),
-                        value = bio,
-                        placeHolderText = stringResource(id = R.string.enter_your_bio),
-                        onValueChange = {
-                            viewModel.updateBio(it)
-                        }
-                    )
-
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-
-                    Button(
-                        onClick = {
-                            navController.navigateSafely(
-                                CreateUsername(
-                                    phoneNumber = phoneNumber,
-                                    name = name.trim(),
-                                    bio = bio.trim(),
-                                    profilePic = profilePic?.toString()
-                                )
-                            )
-                        },
-                        modifier = Modifier
-                            .padding(vertical = 24.dp)
-                            .fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(0.75f),
-                            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
-                        ),
-                        enabled = name.isNotBlank(),
-                        shape = MaterialTheme.shapes.medium
                     ) {
-                        Text(
-                            text = stringResource(R.string.next),
-                            fontFamily = Poppins,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(vertical = 6.dp)
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = stringResource(R.string.select_profile_picture_from_galley),
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                 }
 
+                CreateProfileTextField(
+                    modifier = Modifier.padding(top = 28.dp),
+                    value = name,
+                    placeHolderText = stringResource(R.string.enter_your_name),
+                    onValueChange = { viewModel.updateName(it) }
+                )
+
+                CreateProfileTextField(
+                    modifier = Modifier.padding(top = 14.dp),
+                    value = bio,
+                    placeHolderText = stringResource(id = R.string.enter_your_bio),
+                    onValueChange = { viewModel.updateBio(it) }
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Button(
+                    onClick = {
+                        navController.navigateSafely(
+                            CreateUsername(
+                                phoneNumber = phoneNumber,
+                                name = name.trim(),
+                                bio = bio.trim(),
+                                profilePic = profilePic?.toString()
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = WelcomeGradientTop
+                    ),
+                    enabled = name.isNotBlank()
+                ) {
+                    Text(
+                        text = stringResource(R.string.next),
+                        fontFamily = QuickSand,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                    )
+                }
             }
         }
     }
@@ -227,48 +229,48 @@ fun CreateProfileTextField(
     modifier: Modifier = Modifier,
     onValueChange: (String) -> Unit,
 ) {
-    val indicatorColor = MaterialTheme.colorScheme.surface
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
         colors = TextFieldDefaults.colors(
-            unfocusedContainerColor = MaterialTheme.colorScheme.background,
-            focusedContainerColor = MaterialTheme.colorScheme.background,
+            unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+            focusedContainerColor = Color.White.copy(alpha = 0.14f),
 
-            focusedTextColor = MaterialTheme.colorScheme.onBackground,
-            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
 
-            cursorColor = DarkBlue,
+            cursorColor = Color.White,
             selectionColors = TextSelectionColors(
-                handleColor = MaterialTheme.colorScheme.surface,
-                backgroundColor = SelectionBlue
+                handleColor = Color.White,
+                backgroundColor = WelcomeGradientTop.copy(alpha = 0.35f)
             ),
 
-            unfocusedSupportingTextColor = indicatorColor,
-            focusedSupportingTextColor = indicatorColor,
+            unfocusedSupportingTextColor = Color.Transparent,
+            focusedSupportingTextColor = Color.Transparent,
 
-            unfocusedIndicatorColor = indicatorColor,
-            focusedIndicatorColor = indicatorColor
+            unfocusedIndicatorColor = Color.White.copy(alpha = 0.6f),
+            focusedIndicatorColor = Color.White
         ),
         keyboardOptions = KeyboardOptions.Default.copy(
             keyboardType = KeyboardType.Text,
             showKeyboardOnFocus = false
         ),
         textStyle = TextStyle(
-            fontFamily = QuickSand,
+            fontFamily = Montserrat,
             fontSize = 17.sp,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onBackground
+            color = Color.White
         ),
         placeholder = {
             Text(
                 placeHolderText,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                color = Color.White.copy(alpha = 0.5f),
+                fontFamily = Montserrat,
+                fontSize = 15.sp,
             )
         },
-        modifier = modifier
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     )
 }
 

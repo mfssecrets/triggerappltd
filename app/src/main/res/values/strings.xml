@@ -6,6 +6,14 @@
     <string name="register">Get Started</string>
     <string name="welcome_tagline">Private messaging. Real-time conversations.\nBuilt for the people who matter.</string>
 
+    <string name="otp_sent_to">Code sent to %1$s</string>
+    <string name="enter_otp_below">Enter the 6-digit code we sent you</string>
+    <string name="verifying_otp">Verifying code…</string>
+    <string name="resend_otp">Resend OTP</string>
+    <string name="code_resent">A new code has been sent to your phone.</string>
+    <string name="otp_resend_disabled">Resend available in %1$s</string>
+    <string name="invalid_code">Invalid code. Please try again.</string>
+
     <string name="number_too_short">The number is too short. Enter a valid number.</string>
     <string name="number_too_long">The number is too long. Enter a valid number.</string>
 

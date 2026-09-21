@@ -32,11 +32,22 @@ class EnterCodeViewModel(
     private val _taskState = MutableStateFlow<TaskState>(TaskState.NONE)
     val taskState: StateFlow<TaskState> = _taskState
 
+    private val _isCodeSent = MutableStateFlow(false)
+    val isCodeSent: StateFlow<Boolean> = _isCodeSent
+
     private val _timeLeftInMillis = MutableStateFlow(SMS_TIMEOUT)
     val timeLeftInMillis: StateFlow<Long> = _timeLeftInMillis
 
     val formattedTimeLeft = timeLeftInMillis.map { it.formatDurationInMillis() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    /**
+     * Has the SMS actually been delivered yet? UI uses this to show
+     * "Sending SMS…" vs "Enter the code".
+     */
+    val isSendingSms: StateFlow<Boolean> = _taskState
+        .map { it is TaskState.NONE }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     /**
      * The app moves to Chromes to verify if the user is real
@@ -49,7 +60,7 @@ class EnterCodeViewModel(
         const val CODE_LENGTH = 6
 
         const val SECOND_IN_MILLIS = 1000.toLong()
-        const val SMS_TIMEOUT = 30 * SECOND_IN_MILLIS
+        const val SMS_TIMEOUT = 60 * SECOND_IN_MILLIS   // 60-second resend window (was 30)
     }
 
 
@@ -61,7 +72,6 @@ class EnterCodeViewModel(
 
 
     private fun startTimer() {
-        // Reset timer
         _timeLeftInMillis.value = SMS_TIMEOUT
 
         val timer = object : CountDownTimer(SMS_TIMEOUT, SECOND_IN_MILLIS) {
@@ -79,14 +89,21 @@ class EnterCodeViewModel(
 
     fun authenticateWithNumber(phoneNumber: String, activity: Activity?) {
         if (!isAuthenticating) {
+            isAuthenticating = true
             startTimer()
 
             authRepo.authenticateWithNumber(
                 phoneNumber = phoneNumber,
                 activity = activity!!,
+                onCodeSent = {
+                    // SMS actually reached the user's phone — flip the UI.
+                    _isCodeSent.value = true
+                },
                 onVerificationDone = { isSuccess ->
                     if (isSuccess)
                         _taskState.value = TaskState.DONE.SUCCESS
+                    // If verification failed here, the user can still try submitting
+                    // the SMS code manually; we don't blow away the UI.
                 }
             )
         }
@@ -99,6 +116,8 @@ class EnterCodeViewModel(
     }
 
     fun submitCode() {
+        if (_taskState.value is TaskState.LOADING) return   // prevent double-submit
+
         _taskState.value = TaskState.LOADING()
 
         viewModelScope.launch {
@@ -109,16 +128,25 @@ class EnterCodeViewModel(
                     viewModelScope.launch {
                         if (isSuccess) {
                             _taskState.value = TaskState.DONE.SUCCESS
-                        } else
-                            _taskState.value = TaskState.DONE.ERROR(R.string.error_occurred)
+                        } else {
+                            // Wrong OTP — keep the user on this screen so they can retry.
+                            _taskState.value = TaskState.DONE.ERROR(R.string.invalid_code)
+                            // Clear the wrong code so they can type a fresh one.
+                            _code.value = ""
+                        }
                     }
                 }
             } catch (e: Exception) { // Thrown when the wrong OTP is entered
                 _taskState.value = TaskState.DONE.ERROR(R.string.wrong_otp_entered)
+                _code.value = ""
             }
         }
     }
 
+    /**
+     * Reset back to the "Enter the code" state — used by the UI after showing
+     * the error snackbar so the user can retry. Does NOT trigger a re-send.
+     */
     fun resetTaskState() {
         _taskState.value = TaskState.NONE
     }

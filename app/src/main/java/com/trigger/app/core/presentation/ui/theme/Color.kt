@@ -14,6 +14,12 @@ val DarkBlue = Color(0xFF1c2e46)
 val DarkerBlue = Color(0xFF0E1D31)
 val GreyBlue = Color(0xFF304057)
 
+// Welcome-screen gradient stops (top → bottom)
+val WelcomeGradientTop    = Color(0xFF2E5CB8)   // vibrant brand blue
+val WelcomeGradientMid    = Color(0xFF1c2e46)   // DarkBlue
+val WelcomeGradientBottom = Color(0xFF070A12)   // near-black, blends with status bar
+val WelcomeGlow            = Color(0xFF4A78E0)   // logo glow halo
+
 val CorrectGreen = Color(0xFF00FF92)
 val OnlineGreen = Color(0xFF0CFF97)
 val ErrorRed = Color(0xFFF0384E)

@@ -3,7 +3,8 @@
 
 
     <string name="welcome_message">Welcome to Trigger App</string>
-    <string name="register">Register</string>
+    <string name="register">Get Started</string>
+    <string name="welcome_tagline">Private messaging. Real-time conversations.\nBuilt for the people who matter.</string>
 
     <string name="number_too_short">The number is too short. Enter a valid number.</string>
     <string name="number_too_long">The number is too long. Enter a valid number.</string>

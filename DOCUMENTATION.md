@@ -41,12 +41,77 @@ bash ./gradlew :app:assembleDebug
 
 The debug APK is generated under `app/build/outputs/apk/debug/`.
 
+## User Onboarding
+
+New users complete the following flow:
+
+1. Enter and verify a phone number with Firebase Phone Authentication.
+2. Create a profile with a name, bio, and optional profile picture.
+3. Choose a unique username on the username onboarding page.
+
+Usernames are normalized to lowercase, must be 5-24 characters, and may contain letters, numbers, and underscores. Availability is checked live, and the final profile save atomically reserves the username in Firestore.
+
+## Dashboard
+
+The primary dashboard tabs are:
+
+- Chats
+- Groups
+- Stories
+- Calls
+
+Groups and Calls currently show their planned-feature state. The Chats header includes Message Requests, and the central action starts a conversation through phone contacts or username search.
+
+## User Connections
+
+Users can find other registered users in two ways:
+
+- Phone contact matching, using the device contacts permission
+- Username search, using the Firestore username index
+
+Direct conversations are stored in Firestore under `chat_details` and each participant receives a personalized chat reference.
+
+## Chat Moderation
+
+Chat details provide:
+
+- Block User confirmation, loading, and success states
+- Report User page with reason validation, loading, cancellation, and success states
+
+Moderation data is stored in:
+
+```text
+users/{uid}/blockedUsers/{blockedUserId}
+reports/{reportId}
+```
+
+## Settings And Account Pages
+
+The profile header opens Settings, which includes:
+
+- Privacy options and Blocked Users management
+- Verified Badge page
+- Create my Page entry point
+- Help page and support contact action
+- Terms of Service and Privacy Policy links
+- Sign out and Delete Account
+
+The Verified Badge and Create my Page screens currently provide their UI entry points but do not submit backend applications yet.
+
+## Message Requests
+
+The mail icon in the Chats header opens the Message Requests page. The page currently provides its empty state and is ready for request storage plus accept/decline actions.
+
 ## Project Structure
 
 - `app/src/main/java/com/trigger/app/`: Android application source
 - `app/src/main/res/`: Compose and Android resources
 - `compose_ccp/`: Local country-code picker library module
 - `app/google-services.json`: Local Firebase configuration
+- `app/src/main/java/com/trigger/app/auth/`: Phone authentication and onboarding
+- `app/src/main/java/com/trigger/app/chats/`: Chats, connections, requests, and messaging
+- `app/src/main/java/com/trigger/app/core/repo/moderation/`: Block and report persistence
+- `app/src/main/java/com/trigger/app/settings/`: Profile, settings, privacy, Help, and account pages
 
 ## Tests
 

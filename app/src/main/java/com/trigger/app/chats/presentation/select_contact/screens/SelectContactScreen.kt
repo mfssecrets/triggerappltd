@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +53,8 @@ fun SelectContactScreen(
 ) {
     val contactsOnTriggerApp by viewModel.contactsOnTriggerApp.collectAsState(initial = null)
     val shouldNavigateToActualChat by viewModel.shouldNavigateToActualChat.collectAsState()
+    val usernameSearchResult by viewModel.usernameSearchResult.collectAsState()
+    var usernameQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.fetchContactsOnTriggerApp(context)
@@ -83,6 +89,28 @@ fun SelectContactScreen(
         )
 
         Spacer(modifier = Modifier.height(2.dp))
+
+        OutlinedTextField(
+            value = usernameQuery,
+            onValueChange = {
+                usernameQuery = it
+                viewModel.searchByUsername(it)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            singleLine = true,
+            prefix = { Text("@") },
+            label = { Text(stringResource(R.string.search_by_username)) }
+        )
+
+        usernameSearchResult?.let { contact ->
+            ContactPreview(
+                contact = contact,
+                openProfilePic = {},
+                startConversation = { viewModel.startOrResumeConversation(contact) }
+            )
+        }
 
         if (contactsOnTriggerApp == null) { // Network call hasn't returned yet
             Column(

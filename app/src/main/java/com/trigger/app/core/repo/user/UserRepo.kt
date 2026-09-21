@@ -13,7 +13,8 @@ interface UserRepo {
     companion object {
         const val USERS_COLLECTION = "users"
 
-        const val PROFILE_PIC = "profilePic"
+            const val PROFILE_PIC = "profilePic"
+            const val USERNAMES_COLLECTION = "usernames"
 
         fun getStorageRefForProfilePic(uid: String) =
             Firebase.storage
@@ -28,7 +29,18 @@ interface UserRepo {
     /**
      * Creates the user
      */
-    suspend fun createUser(name: String, bio: String, phoneNumber: String, profilePicLocalUri: Uri?, onComplete: (TaskState) -> Unit)
+    suspend fun createUser(
+        name: String,
+        bio: String,
+        username: String,
+        phoneNumber: String,
+        profilePicLocalUri: Uri?,
+        onComplete: (TaskState) -> Unit
+    )
+
+    suspend fun isUsernameAvailable(username: String): Boolean
+
+    suspend fun getUserByUsername(username: String): User?
 
 
 

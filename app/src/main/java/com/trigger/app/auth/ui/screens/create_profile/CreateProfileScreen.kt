@@ -50,20 +50,16 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.canhub.cropper.CropImageContract
 import com.trigger.app.R
-import com.trigger.app.core.domain.TaskState
-import com.trigger.app.core.presentation.ui.AllChats
-import com.trigger.app.core.presentation.ui.Welcome
+import com.trigger.app.core.presentation.ui.CreateUsername
 import com.trigger.app.core.presentation.ui.components.DefaultScreen
-import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.components.UserIcon
-import com.trigger.app.core.presentation.ui.navigateSafelyAndPopTo
+import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.DarkBlue
 import com.trigger.app.core.presentation.ui.theme.Poppins
 import com.trigger.app.core.presentation.ui.theme.QuickSand
 import com.trigger.app.core.presentation.ui.theme.SelectionBlue
 import com.trigger.app.core.utils.DefaultCropContract
-import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun CreateProfileScreen(
@@ -72,8 +68,6 @@ fun CreateProfileScreen(
     phoneNumber: String
 ) {
     val viewModel = viewModel<CreateProfileViewModel>()
-    val taskState by viewModel.taskState.collectAsState()
-
     Box(
         Modifier
             .fillMaxSize()
@@ -116,10 +110,6 @@ fun CreateProfileScreen(
 
             // I would have used task State for this but it simply isn't loading
             // TODO: Fix this
-            var isSubmittingData by remember {
-                mutableStateOf(false)
-            }
-
             Box(Modifier.fillMaxSize()) {
                 Column(
                     Modifier
@@ -193,25 +183,16 @@ fun CreateProfileScreen(
                     Spacer(modifier = Modifier.weight(1f))
 
 
-                    LaunchedEffect(key1 = Unit) {
-                        viewModel.taskState.collectLatest {
-                            if (it is TaskState.DONE.SUCCESS)
-                                navController.navigateSafelyAndPopTo(
-                                    route = AllChats,
-                                    popTo = Welcome,
-                                    isInclusive = true
-                                )
-                            else if (it is TaskState.DONE.ERROR)
-                                snackbarHostState.showSnackbar("Error occurred")
-                        }
-                    }
-
                     Button(
                         onClick = {
-                            isSubmittingData = true
-                            viewModel.createUserProfile(phoneNumber)
-                            viewModel.resetTaskState()
-                            isSubmittingData = false
+                            navController.navigateSafely(
+                                CreateUsername(
+                                    phoneNumber = phoneNumber,
+                                    name = name.trim(),
+                                    bio = bio.trim(),
+                                    profilePic = profilePic?.toString()
+                                )
+                            )
                         },
                         modifier = Modifier
                             .padding(vertical = 24.dp)
@@ -234,10 +215,6 @@ fun CreateProfileScreen(
                     }
                 }
 
-//                if (taskState !is TaskState.NONE)
-                // tODO: Why is this NOT WORKING????
-                if (isSubmittingData)
-                    LoadingSpinner(modifier = Modifier.align(Alignment.Center))
             }
         }
     }

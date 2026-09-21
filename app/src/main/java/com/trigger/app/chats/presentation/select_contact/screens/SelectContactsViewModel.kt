@@ -9,6 +9,8 @@ import com.trigger.app.core.domain.User
 import com.trigger.app.core.presentation.ui.ActualChat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -21,6 +23,10 @@ class SelectContactsViewModel(
 
     private val _shouldNavigateToActualChat = MutableStateFlow<ActualChat?>(null)
     val shouldNavigateToActualChat: StateFlow<ActualChat?> = _shouldNavigateToActualChat
+
+    private val _usernameSearchResult = MutableStateFlow<User?>(null)
+    val usernameSearchResult: StateFlow<User?> = _usernameSearchResult
+    private var usernameSearchJob: Job? = null
 
     /**
      * If the user selects someone they are already talking with, return them to their ongoing coveration
@@ -38,6 +44,18 @@ class SelectContactsViewModel(
 
     suspend fun fetchContactsOnTriggerApp(context: Context) {
         contactsRepo.refreshContactsOnTriggerApp(context)
+    }
+
+    fun searchByUsername(value: String) {
+        val username = value.removePrefix("@").lowercase()
+        usernameSearchJob?.cancel()
+        _usernameSearchResult.value = null
+        if (username.length < 5) return
+
+        usernameSearchJob = viewModelScope.launch {
+            delay(350)
+            _usernameSearchResult.value = contactsRepo.searchUserByUsername(username)
+        }
     }
 
 

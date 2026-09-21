@@ -26,6 +26,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.trigger.app.auth.ui.screens.create_profile.CreateProfileScreen
+import com.trigger.app.auth.ui.screens.create_username.CreateUsernameScreen
 import com.trigger.app.auth.ui.screens.enter_code.EnterCodeScreen
 import com.trigger.app.auth.ui.screens.enter_number.EnterNumberScreen
 import com.trigger.app.calls.ui.screens.CallsScreen
@@ -35,15 +36,19 @@ import com.trigger.app.chats.presentation.actual_chat.screens.view_image.ViewIma
 import com.trigger.app.chats.presentation.all_chats.screens.AllChatsScreen
 import com.trigger.app.chats.presentation.chat_details.screens.ChatDetailsScreen
 import com.trigger.app.chats.presentation.select_contact.screens.SelectContactScreen
+import com.trigger.app.chats.presentation.message_requests.MessageRequestsScreen
 import com.trigger.app.core.presentation.ui.ActualChat
 import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.Calls
 import com.trigger.app.core.presentation.ui.ChatDetails
 import com.trigger.app.core.presentation.ui.CreateProfile
+import com.trigger.app.core.presentation.ui.CreateUsername
 import com.trigger.app.core.presentation.ui.EnterCode
 import com.trigger.app.core.presentation.ui.EnterNumber
 import com.trigger.app.core.presentation.ui.Groups
+import com.trigger.app.core.presentation.ui.Help
 import com.trigger.app.core.presentation.ui.MyProfile
+import com.trigger.app.core.presentation.ui.MessageRequests
 import com.trigger.app.core.presentation.ui.SelectContact
 import com.trigger.app.core.presentation.ui.SendImage
 import com.trigger.app.core.presentation.ui.SendImageIn
@@ -61,6 +66,17 @@ import com.trigger.app.notifications.ReplyService
 import com.trigger.app.notifications.UnreadMessagesService
 import com.trigger.app.settings.presentation.screens.profile.ProfileScreen
 import com.trigger.app.settings.presentation.screens.settings.SettingsScreen
+import com.trigger.app.settings.presentation.screens.privacy.BlockedUsersScreen
+import com.trigger.app.settings.presentation.screens.privacy.CreatePageScreen
+import com.trigger.app.settings.presentation.screens.privacy.PrivacySettingsScreen
+import com.trigger.app.settings.presentation.screens.privacy.ReportUserScreen
+import com.trigger.app.settings.presentation.screens.privacy.VerifiedBadgeScreen
+import com.trigger.app.settings.presentation.screens.privacy.HelpScreen
+import com.trigger.app.core.presentation.ui.PrivacySettings
+import com.trigger.app.core.presentation.ui.BlockedUsers
+import com.trigger.app.core.presentation.ui.VerifiedBadge
+import com.trigger.app.core.presentation.ui.CreateMyPage
+import com.trigger.app.core.presentation.ui.ReportUser
 import com.trigger.app.stories.ui.screens.all_stories.StoriesScreen
 import com.trigger.app.welcome.WelcomeScreen
 import com.google.firebase.auth.ktx.auth
@@ -157,12 +173,25 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
+                            composable<CreateUsername> {
+                                val args = it.toRoute<CreateUsername>()
+
+                                CreateUsernameScreen(
+                                    navController = navController,
+                                    route = args,
+                                    snackbarHostState = snackbarHostState
+                                )
+                            }
+
 
                             composable<SelectContact> {
                                 SelectContactScreen(
                                     context = LocalContext.current,
                                     navController = navController
                                 )
+                            }
+                            composable<MessageRequests> {
+                                MessageRequestsScreen(navController)
                             }
 
 
@@ -171,6 +200,24 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<MyProfile> {
                                 ProfileScreen(navController = navController)
+                            }
+                            composable<Help> {
+                                HelpScreen(navController)
+                            }
+                            composable<PrivacySettings> {
+                                PrivacySettingsScreen(navController)
+                            }
+                            composable<BlockedUsers> {
+                                BlockedUsersScreen(navController)
+                            }
+                            composable<VerifiedBadge> {
+                                VerifiedBadgeScreen(navController)
+                            }
+                            composable<CreateMyPage> {
+                                CreatePageScreen(navController)
+                            }
+                            composable<ReportUser> {
+                                ReportUserScreen(navController, it.toRoute<ReportUser>().userID)
                             }
 
 

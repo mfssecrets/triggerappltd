@@ -26,12 +26,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.trigger.app.R
 import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.MyProfile
+import com.trigger.app.core.presentation.ui.PrivacySettings
+import com.trigger.app.core.presentation.ui.VerifiedBadge
+import com.trigger.app.core.presentation.ui.CreateMyPage
+import com.trigger.app.core.presentation.ui.Help
 import com.trigger.app.core.presentation.ui.Welcome
 import com.trigger.app.core.presentation.ui.components.DefaultScreen
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
@@ -104,6 +109,21 @@ fun SettingsScreen(navController: NavController) {
                 }
             )
 
+            SettingsOption(stringResource(R.string.privacy)) {
+                navController.navigateSafely(PrivacySettings)
+            }
+            SettingsOption(stringResource(R.string.verified_badge)) {
+                navController.navigateSafely(VerifiedBadge)
+            }
+            SettingsOption(stringResource(R.string.create_my_page)) {
+                navController.navigateSafely(CreateMyPage)
+            }
+            SettingsOption(stringResource(R.string.help)) {
+                navController.navigateSafely(Help)
+            }
+
+            LegalLinks()
+
             SettingsOption(
                 name = stringResource(R.string.sign_out),
                 modifier = Modifier,
@@ -141,6 +161,24 @@ fun SettingsScreen(navController: NavController) {
 
 
         if (isDeleting) LoadingSpinner(modifier = Modifier.align(Alignment.Center))
+    }
+}
+
+@Composable
+private fun LegalLinks() {
+    val uriHandler = LocalUriHandler.current
+    Text(
+        text = stringResource(R.string.legal),
+        fontFamily = QuickSand,
+        fontSize = 17.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 4.dp)
+    )
+    SettingsOption(stringResource(R.string.terms_of_service)) {
+        uriHandler.openUri("https://triggerappltd.cyou/terms")
+    }
+    SettingsOption(stringResource(R.string.privacy_policy)) {
+        uriHandler.openUri("https://triggerappltd.cyou/privacy")
     }
 }
 

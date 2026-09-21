@@ -13,10 +13,11 @@ data class User(
     val profilePic: String?,
     val number: String,
     var lastSeen: Long,
-    var userStatus: UserStatus = UserStatus.HasDataButNotInApp
+    var userStatus: UserStatus = UserStatus.HasDataButNotInApp,
+    val username: String = ""
 ) : Parcelable {
 
-    constructor() : this("", "", "", null, "", 0)
+    constructor() : this("", "", "", null, "", 0, UserStatus.HasDataButNotInApp, "")
 
 
     companion object {

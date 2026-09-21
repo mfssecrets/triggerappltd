@@ -52,6 +52,9 @@ object EnterNumber
 @Serializable
 object SelectContact
 
+@Serializable
+object MessageRequests
+
 
 @Serializable
 data class EnterCode(val phoneNumberWithCountryCode: String)
@@ -61,11 +64,33 @@ data class EnterCode(val phoneNumberWithCountryCode: String)
 @Parcelize
 data class CreateProfile(val phoneNumber: String) : Parcelable
 
+@Serializable
+@Parcelize
+data class CreateUsername(
+    val phoneNumber: String,
+    val name: String,
+    val bio: String,
+    val profilePic: String?
+) : Parcelable
+
 
 @Serializable
 object Settings
 @Serializable
 object MyProfile
+@Serializable
+object Help
+@Serializable
+object PrivacySettings
+@Serializable
+object BlockedUsers
+@Serializable
+object VerifiedBadge
+@Serializable
+object CreateMyPage
+
+@Serializable
+data class ReportUser(val userID: String)
 
 
 @Serializable

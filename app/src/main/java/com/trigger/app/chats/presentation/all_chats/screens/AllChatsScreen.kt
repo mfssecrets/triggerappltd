@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -48,6 +49,7 @@ import com.trigger.app.chats.presentation.all_chats.components.ChatPreview
 import com.trigger.app.chats.presentation.view_profile_pic.ControlBlurOnScreen
 import com.trigger.app.core.presentation.ui.ActualChat
 import com.trigger.app.core.presentation.ui.SelectContact
+import com.trigger.app.core.presentation.ui.MessageRequests
 import com.trigger.app.core.presentation.ui.Settings
 import com.trigger.app.core.presentation.ui.components.AppBottomBar
 import com.trigger.app.core.presentation.ui.components.BottomBars
@@ -102,6 +104,15 @@ fun AllChatsScreen(
                         navController.navigateSafely(
                             route = Settings
                         )
+                    }
+                )
+
+                TintedAppBarIcon(
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    imageVector = Icons.Rounded.Mail,
+                    contentDescription = stringResource(R.string.message_requests),
+                    onClick = {
+                        navController.navigateSafely(MessageRequests)
                     }
                 )
 

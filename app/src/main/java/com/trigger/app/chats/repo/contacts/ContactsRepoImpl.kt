@@ -33,7 +33,11 @@ class ContactsRepoImpl(
 
 
     override suspend fun getContactFromUID(userUID: String): User? =
-        localContactDao.getContact(userUID)
+        localContactDao.getContact(userUID) ?: userRepo.getUserFromUID(userUID)
+
+    override suspend fun searchUserByUsername(username: String): User? =
+        userRepo.getUserByUsername(username.lowercase())
+            ?.takeUnless { it.uid == Firebase.auth.uid }
 
 
     override suspend fun checkForPreExistingChat(contactToCheck: User): String? {

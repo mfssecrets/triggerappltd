@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +34,8 @@ import com.trigger.app.chats.presentation.chat_details.components.ComingSoonPopu
 import com.trigger.app.chats.presentation.chat_details.components.RedBorderButton
 import com.trigger.app.chats.presentation.view_profile_pic.ControlBlurOnScreen
 import com.trigger.app.core.presentation.ui.components.DefaultScreen
+import com.trigger.app.core.presentation.ui.ReportUser
+import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.LocalAppColors
@@ -46,6 +50,8 @@ fun ChatDetailsScreen(
     val viewModel = viewModel<ChatDetailsViewModel>()
 
     val otherUser by viewModel.otherUser.collectAsState(initial = null)
+    val blockState by viewModel.blockState.collectAsState()
+    var showBlockConfirmation by remember { mutableStateOf(false) }
     var showComingSoonPopup by remember {
         mutableStateOf(false)
     }
@@ -147,12 +153,14 @@ fun ChatDetailsScreen(
                     RedBorderButton(
                         name = stringResource(R.string.block_user),
                         modifier = Modifier.padding(bottom = 4.dp),
-                        onOptionSelected = {}
+                        onOptionSelected = { showBlockConfirmation = true }
                     )
                     RedBorderButton(
                         name = stringResource(R.string.report_user),
                         modifier = Modifier.padding(bottom = 8.dp),
-                        onOptionSelected = {}
+                        onOptionSelected = {
+                            navController.navigate(ReportUser(user.uid))
+                        }
                     )
                 }
             }
@@ -161,6 +169,39 @@ fun ChatDetailsScreen(
                 ComingSoonPopup(
                     hidePopup = {
                         showComingSoonPopup = false
+                    }
+                )
+
+            if (blockState is com.trigger.app.core.domain.TaskState.LOADING)
+                LoadingSpinner(modifier = Modifier.align(Alignment.Center))
+
+            if (showBlockConfirmation)
+                AlertDialog(
+                    onDismissRequest = { showBlockConfirmation = false },
+                    title = { Text(stringResource(R.string.block_user)) },
+                    text = { Text(stringResource(R.string.block_confirmation)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showBlockConfirmation = false
+                            viewModel.blockUser()
+                        }) { Text(stringResource(R.string.block_user)) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showBlockConfirmation = false }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
+
+            if (blockState is com.trigger.app.core.domain.TaskState.DONE.SUCCESS)
+                AlertDialog(
+                    onDismissRequest = { navController.popBackStack() },
+                    title = { Text(stringResource(R.string.user_blocked)) },
+                    text = { Text(stringResource(R.string.user_blocked_message)) },
+                    confirmButton = {
+                        TextButton(onClick = { navController.popBackStack() }) {
+                            Text(stringResource(R.string.close))
+                        }
                     }
                 )
         }

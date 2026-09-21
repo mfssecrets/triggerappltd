@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +41,9 @@ import com.trigger.app.R
 import com.trigger.app.chats.presentation.view_profile_pic.ControlBlurOnScreen
 import com.trigger.app.core.domain.TaskState
 import com.trigger.app.core.presentation.ui.components.DefaultScreen
+import com.trigger.app.core.presentation.ui.components.AppBar
+import com.trigger.app.core.presentation.ui.Settings
+import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.theme.AppTheme
@@ -70,7 +77,24 @@ fun ProfileScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             DefaultScreen(
                 navController = navController,
-                appBarText = stringResource(R.string.profile)
+                appBar = {
+                    Box(Modifier.fillMaxWidth()) {
+                        AppBar(
+                            navController = navController,
+                            appBarText = stringResource(R.string.profile),
+                            onBackPressed = { navController.popBackStack() }
+                        )
+                        IconButton(
+                            onClick = { navController.navigateSafely(Settings) },
+                            modifier = Modifier.align(Alignment.CenterEnd)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = stringResource(R.string.settings)
+                            )
+                        }
+                    }
+                }
             ) {
 
                 Box(
@@ -112,6 +136,15 @@ fun ProfileScreen(
                         data = user?.name ?: "",
                         textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium),
                         onEditClicked = { showNamePopup = true }
+                    )
+
+                    ProfileItem(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        startIcon = Icons.Outlined.Person,
+                        title = stringResource(R.string.username),
+                        data = user?.username?.let { "@$it" } ?: "",
+                        textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                        onEditClicked = null
                     )
 
                     ProfileItem(

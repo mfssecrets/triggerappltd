@@ -32,4 +32,6 @@ interface ContactsRepo {
      */
     suspend fun getContactFromUID(userUID: String): User?
 
+    suspend fun searchUserByUsername(username: String): User?
+
 }

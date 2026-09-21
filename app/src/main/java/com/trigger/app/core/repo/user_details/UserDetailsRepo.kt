@@ -1,0 +1,42 @@
+package com.trigger.app.core.repo.user_details
+
+import android.net.Uri
+import com.trigger.app.core.domain.MiniUser
+import com.trigger.app.core.domain.TaskState
+import com.trigger.app.core.domain.User
+import kotlinx.coroutines.flow.Flow
+
+interface UserDetailsRepo {
+
+    val getUserProfileFlow: Flow<User?>
+
+    fun getUserLastSeenAsFlow(user: Flow<MiniUser?>): Flow<String?>
+
+    /**
+     * Updates the user's name in the main /user/ DB
+     * then fetches all the personal chat IDS,
+     * then changes the user name in all the chats
+     *
+     * @return isSuccessful - true if operation is a success
+     */
+    suspend fun updateUserName(userID: String, newName: String): Boolean
+
+
+    suspend fun updateUserBio(userID: String, newBio: String): Boolean
+
+
+    fun updateUserLastSeen(userID: String, lastSeen: Long)
+
+    suspend fun goOnline(userID: String)
+    suspend fun goOffline(userID: String)
+
+    /**
+     * Updates the user's profilePic in the main /user/ DB
+     * then fetches all the personal chat IDS,
+     * then changes the user profilePic in all the chats
+     *
+     * @return A callback flow which sends progress on the image upload progress
+     */
+   suspend fun updateUserProfilePic(userID: String, newProfilePicLocalUri: Uri): Flow<TaskState>
+
+}

@@ -1,0 +1,59 @@
+package com.trigger.app.auth.ui.screens.create_profile
+
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.trigger.app.core.domain.TaskState
+import com.trigger.app.core.repo.user.UserRepo
+import com.trigger.app.core.repo.user.UserRepoImpl
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+class CreateProfileViewModel(
+    private val userRepo: UserRepo = UserRepoImpl()
+) : ViewModel() {
+
+    private val _profilePic = MutableStateFlow<Uri?>(null)
+    val profilePic: StateFlow<Uri?> = _profilePic
+
+    private val _name = MutableStateFlow("")
+    val name: StateFlow<String> = _name
+
+    private val _bio = MutableStateFlow("")
+    val bio: StateFlow<String> = _bio
+
+    private val _taskState = MutableStateFlow<TaskState>(TaskState.NONE)
+    val taskState: StateFlow<TaskState> = _taskState
+
+
+    fun createUserProfile(phoneNumber: String) {
+        val profilePicLocalUri = profilePic.value
+        _taskState.value = TaskState.LOADING()
+
+        viewModelScope.launch {
+            userRepo.createUser(
+                name = name.value,
+                bio = bio.value,
+                phoneNumber = phoneNumber,
+                profilePicLocalUri = profilePicLocalUri,
+                onComplete = {
+                    _taskState.value = it
+                }
+            )
+        }
+    }
+
+    fun updateName(newName: String) { _name.value = newName }
+    fun updateBio(newBio: String) { _bio.value = newBio }
+
+    fun updateProfilePic(newPic: Uri) {
+        _profilePic.value = newPic
+    }
+
+
+    fun resetTaskState() {
+        _taskState.value = TaskState.NONE
+    }
+
+}

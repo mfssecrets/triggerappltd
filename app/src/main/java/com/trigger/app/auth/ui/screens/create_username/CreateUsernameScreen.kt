@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -45,12 +46,13 @@ fun CreateUsernameScreen(
     val username by viewModel.username.collectAsState()
     val availability by viewModel.availability.collectAsState()
     val taskState by viewModel.taskState.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(taskState) {
         when (taskState) {
             TaskState.DONE.SUCCESS -> navController.navigateSafelyAndPopTo(AllChats, Welcome, true)
             is TaskState.DONE.ERROR -> snackbarHostState.showSnackbar(
-                stringResource((taskState as TaskState.DONE.ERROR).errorMessageRes)
+                context.getString((taskState as TaskState.DONE.ERROR).errorMessageRes)
             )
             else -> Unit
         }

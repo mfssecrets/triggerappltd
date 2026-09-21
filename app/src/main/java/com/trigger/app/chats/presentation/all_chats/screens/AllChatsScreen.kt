@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -109,7 +109,7 @@ fun AllChatsScreen(
 
                 TintedAppBarIcon(
                     modifier = Modifier.align(Alignment.CenterEnd),
-                    imageVector = Icons.Rounded.Mail,
+                    imageVector = Icons.Rounded.Email,
                     contentDescription = stringResource(R.string.message_requests),
                     onClick = {
                         navController.navigateSafely(MessageRequests)

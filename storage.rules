@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// Trigger App Cloud Storage Security Rules
+// Project: trigger-app-cd138, storage bucket: trigger-app-cd138.firebasestorage.app
+//
+// Storage paths used by the app (verified from Kotlin source audit):
+//   USERS/{uid}/profilePic                — UserRepo.getStorageRefForProfilePic
+//   CHATS/{chatID}/IMAGES/{UUID}          — MessagesRepoImpl.uploadFileUsingUri
+//   CHATS/{chatID}/AUDIO/{UUID}           — MessagesRepoImpl.uploadFileUsingUri
+//   story/{uid}/{storyID}                 — StoryRepoImpl.postStory
+//
+// All image/audio bytes are uploaded with putFile() from the device, and the
+// resulting download URL is later written to Firestore. Reads happen through
+// FirebaseStorage.getReferenceFromUrl(url) (i.e., anyone with the URL can
+// download the asset) and via Glide/Coil loading those URLs.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // True if the request is from a signed-in user.
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // True if the given uid is a participant of the chat (either firstMiniUser
+    // or secondMiniUser). Used to authorize chat media reads/writes.
+    // NOTE: In Storage rules, Firestore accessors MUST be prefixed with
+    // `firestore.` — i.e. firestore.exists(...) and firestore.get(...).
+    function isChatParticipant(chatID) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/chat_details/$(chatID))
+        && (firestore.get(/databases/(default)/documents/chat_details/$(chatID)).data.firstMiniUser.uid == uid()
+            || firestore.get(/databases/(default)/documents/chat_details/$(chatID)).data.secondMiniUser.uid == uid());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Profile pictures — USERS/{uid}/profilePic
+    // ---------------------------------------------------------------------------
+    match /USERS/{userId}/profilePic {
+      // Anyone signed in can read profile pics (URLs are also shared publicly
+      // via Firestore user docs, so URL-based reads bypass this rule anyway).
+      allow read: if isSignedIn();
+      // Only the owner can write/overwrite/delete their profile pic.
+      allow write: if isSignedIn() && userId == uid()
+        && request.resource.size < 5 * 1024 * 1024 // 5 MB cap
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Chat images — CHATS/{chatID}/IMAGES/{messageID}
+    // ---------------------------------------------------------------------------
+    match /CHATS/{chatID}/IMAGES/{file} {
+      // Read: only chat participants. (URL-based reads bypass this; for tighter
+      // control, disable URL sharing and use signed URLs.)
+      allow read: if isChatParticipant(chatID);
+      // Write: only chat participants, images only, size-capped.
+      allow write: if isChatParticipant(chatID)
+        && request.resource.size < 10 * 1024 * 1024 // 10 MB
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Chat audio — CHATS/{chatID}/AUDIO/{messageID}
+    // ---------------------------------------------------------------------------
+    match /CHATS/{chatID}/AUDIO/{file} {
+      allow read: if isChatParticipant(chatID);
+      allow write: if isChatParticipant(chatID)
+        && request.resource.size < 5 * 1024 * 1024 // 5 MB
+        && (request.resource.contentType.matches('audio/.*')
+            || request.resource.contentType == 'application/ogg');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Story images — story/{uid}/{storyID}
+    // ---------------------------------------------------------------------------
+    match /story/{authorId}/{storyId} {
+      // Read: anyone signed in (stories are visible to other app users).
+      allow read: if isSignedIn();
+      // Write/delete: only the author.
+      allow write, delete: if isSignedIn() && authorId == uid()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Catch-all: deny everything else.
+    // ---------------------------------------------------------------------------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "trigger-app-cd138",
+    "production": "trigger-app-cd138"
+  }
+}

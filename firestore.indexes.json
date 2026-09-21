@@ -1,0 +1,86 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "firstMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "unreadMessagesCount", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "secondMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "unreadMessagesCount", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "firstMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "timeOfLastMessage", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "secondMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "timeOfLastMessage", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "firstMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "secondMiniUser.uid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chat_details",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "secondMiniUser.uid", "order": "ASCENDING" },
+        { "fieldPath": "firstMiniUser.uid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "messageStatus", "order": "ASCENDING" },
+        { "fieldPath": "timeSent", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "senderID", "order": "ASCENDING" },
+        { "fieldPath": "timeSent", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "messageStatus", "order": "ASCENDING" },
+        { "fieldPath": "senderID", "order": "ASCENDING" },
+        { "fieldPath": "timeSent", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "senderID", "order": "ASCENDING" },
+        { "fieldPath": "messageStatus", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,281 @@
+rules_version = '2';
+
+// Trigger App Firestore Security Rules
+// Project: trigger-app-cd138
+// App package: com.trigger.app
+//
+// Collections covered (verified from Kotlin source audit):
+//   users/{uid}
+//   users/{uid}/blockedUsers/{blockedUid}
+//   usernames/{username}
+//   chat_details/{chatID}
+//   chats/{chatID}/messages/{messageID}
+//   personalized_chats/FILLER/{uid}/{chatID}
+//   story_details/{uid}
+//   story/content/{uid}/{storyID}
+//   story/viewers/{uid}/{viewerID}        (currently unused by the app - locked down)
+//   reports/{reportID}
+//
+// Auth model: Firebase Phone Auth (SMS). request.auth.uid == Firebase.auth.uid.
+// All timestamps are client-side System.currentTimeMillis() — rules do NOT rely on request.time.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------------------
+    // Helper functions
+    // ---------------------------------------------------------------------------
+
+    // True if the request is from a signed-in user.
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // True if the given uid is a participant of the chat (either firstMiniUser
+    // or secondMiniUser). Chat participants are stored inline on chat_details.
+    function isChatParticipant(chatID) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/chat_details/$(chatID))
+        && (get(/databases/$(database)/documents/chat_details/$(chatID)).data.firstMiniUser.uid == uid()
+            || get(/databases/$(database)/documents/chat_details/$(chatID)).data.secondMiniUser.uid == uid());
+    }
+
+    // True if the new chat being created lists the signed-in user as a participant.
+    function isCreatingChatWithSelf() {
+      return isSignedIn()
+        && (request.resource.data.firstMiniUser.uid == uid()
+            || request.resource.data.secondMiniUser.uid == uid());
+    }
+
+    // ---------------------------------------------------------------------------
+    // users/{uid} — root user profile
+    //   Fields: name, uid, bio, profilePic, number, lastSeen, userStatus, username
+    // ---------------------------------------------------------------------------
+    match /users/{userId} {
+
+      // Anyone signed in can read any user profile (needed for chat previews,
+      // contact matching, story authors, etc.).
+      allow read: if isSignedIn();
+
+      // Create: only the owner, and the doc id must equal the auth uid.
+      allow create: if isSignedIn()
+        && userId == uid()
+        && request.resource.data.uid == uid()
+        // require core fields to be present and well-typed
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.number is string
+        && request.resource.data.number.size() > 0
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[a-z0-9_]{5,24}$')
+        && request.resource.data.lastSeen is int
+        && request.resource.data.userStatus is string;
+
+      // Update: only the owner. Block changes to identity fields (uid, number,
+      // username) — those are managed through dedicated flows (transactional
+      // username reservation on create, profile edits for name/bio/pic).
+      allow update: if isSignedIn()
+        && userId == uid()
+        // uid is immutable
+        && request.resource.data.uid == resource.data.uid
+        // phone number is immutable after creation (auth-bound)
+        && request.resource.data.number == resource.data.number
+        // username is reserved at create time and not mutated via users/{uid} writes
+        && request.resource.data.username == resource.data.username;
+
+      // Delete: only the owner. Used by SettingsViewModel.deleteAccount.
+      allow delete: if isSignedIn() && userId == uid();
+
+      // Blocked-users subcollection: users/{uid}/blockedUsers/{blockedUid}
+      // Stores full User object of the blocked user.
+      match /blockedUsers/{blockedUserId} {
+        allow read:   if isSignedIn() && userId == uid();
+        allow write:  if isSignedIn() && userId == uid();
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // usernames/{username}
+    //   Single field: { uid: string }
+    //   Reserved transactionally on signup (UserRepoImpl.createUser).
+    //   Reverse lookup: UserRepoImpl.getUserByUsername.
+    // ---------------------------------------------------------------------------
+    match /usernames/{username} {
+      // Public read for username -> uid resolution (needed for chat start by username).
+      allow read: if isSignedIn();
+
+      // Create: must not already exist (enforced by resource==null), the doc
+      // id must match the username pattern, and the uid field must equal the
+      // caller's uid. This is what makes the atomic reservation safe even
+      // outside a transaction.
+      allow create: if isSignedIn()
+        && resource == null
+        && username.matches('^[a-z0-9_]{5,24}$')
+        && request.resource.data.uid == uid();
+
+      // Updates: not allowed. Username cannot be transferred or modified.
+      allow update: if false;
+
+      // Delete: only the owner (matched by uid field). Used on account deletion
+      // when that code path is wired up.
+      allow delete: if isSignedIn()
+        && resource.data.uid == uid()
+        && request.resource == null;
+    }
+
+    // ---------------------------------------------------------------------------
+    // chat_details/{chatID}
+    //   Fields: chatID, firstMiniUser{uid,name,profilePic},
+    //           secondMiniUser{uid,name,profilePic}, unreadMessagesCount,
+    //           lastMessageSender, lastMessageStatus, timeOfLastMessage,
+    //           lastMessageType, isDisabled
+    // ---------------------------------------------------------------------------
+    match /chat_details/{chatID} {
+      // Read: only participants.
+      allow read: if isChatParticipant(chatID);
+
+      // Create: a brand-new chat (no prior doc) where the caller is a participant.
+      allow create: if isSignedIn()
+        && isCreatingChatWithSelf()
+        && request.resource.data.chatID == chatID
+        && request.resource.data.firstMiniUser.uid is string
+        && request.resource.data.secondMiniUser.uid is string
+        && request.resource.data.firstMiniUser.uid != request.resource.data.secondMiniUser.uid;
+
+      // Update: only participants. Allow status/lastMessage/unread propagation,
+      // including the isDisabled=true flag that runs on block / account delete.
+      allow update: if isChatParticipant(chatID);
+
+      // Delete: not allowed through the client (chats are disabled, not deleted).
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------------------
+    // chats/{chatID}/messages/{messageID}
+    //   Fields: senderID, messageID, messageType{...}, timeSent,
+    //           messageStatus, wasEdited
+    // ---------------------------------------------------------------------------
+    match /chats/{chatID}/messages/{messageID} {
+      // Read: only chat participants. The app uses an OR filter on
+      // messageStatus/senderID, but that filter is purely client-side; the
+      // server still requires that the caller is a participant.
+      allow read: if isChatParticipant(chatID);
+
+      // Create: only participants, and the sender must be the caller.
+      allow create: if isChatParticipant(chatID)
+        && request.resource.data.senderID == uid()
+        && request.resource.data.messageID == messageID
+        && request.resource.data.timeSent is int
+        && request.resource.data.messageStatus is string;
+
+      // Update: only participants. The app updates messageStatus (SENT,
+      // RECEIVED, OPENED), edits messageType (wasEdited=true), and unsends
+      // (delete). Allowing both participants to update is required because
+      // the receiver writes OPENED / RECEIVED on the sender's message.
+      allow update: if isChatParticipant(chatID);
+
+      // Delete: only the sender of the message (unsend). Receiver cannot delete.
+      allow delete: if isChatParticipant(chatID)
+        && resource.data.senderID == uid();
+    }
+
+    // ---------------------------------------------------------------------------
+    // personalized_chats/FILLER/{uid}/{chatID}
+    //   Per-user index of chats. Fields: { chatID: string }
+    //   The "FILLER" grouping doc is a hard-coded placeholder from ChatRepo.kt
+    //   and is never read or written directly by the app.
+    // ---------------------------------------------------------------------------
+    match /personalized_chats/{filler} {
+      // The filler doc itself is never read/written by the app; lock it down.
+      allow read, write: if false;
+
+      match /{userId}/{chatID} {
+        // Read: only the owner (the uid in the path).
+        allow read: if isSignedIn() && userId == uid();
+        // Write: only the owner, and the chatID must exist in chat_details
+        //        with the caller as a participant.
+        allow write: if isSignedIn()
+          && userId == uid()
+          && isChatParticipant(chatID);
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // story_details/{uid}
+    //   Fields: authorID, authorProfilePic, authorName, storyCount,
+    //           previewImage, timeUploaded
+    // ---------------------------------------------------------------------------
+    match /story_details/{authorId} {
+      // Read: anyone signed in (stories are public to other app users).
+      allow read: if isSignedIn();
+      // Write: only the author.
+      allow write: if isSignedIn() && authorId == uid()
+        && request.resource.data.authorID == uid();
+    }
+
+    // ---------------------------------------------------------------------------
+    // story/content/{uid}/{storyID}
+    //   Fields: storyID, authorUID, imageUrl, storyCaption, timeUploaded,
+    //           totalViewers, viewersIDs
+    // ---------------------------------------------------------------------------
+    match /story/{doc} {
+      // Unused grouping doc; lock down.
+      allow read, write: if false;
+
+      match /content/{authorId}/{storyID} {
+        // Read: anyone signed in.
+        allow read: if isSignedIn();
+        // Create: only the author.
+        allow create: if isSignedIn()
+          && authorId == uid()
+          && request.resource.data.authorUID == uid()
+          && request.resource.data.storyID == storyID;
+        // Delete: only the author.
+        allow delete: if isSignedIn()
+          && authorId == uid()
+          && resource.data.authorUID == uid();
+        // Update: only the author (e.g. increment viewers when watchStory
+        // is implemented).
+        allow update: if isSignedIn()
+          && authorId == uid()
+          && resource.data.authorUID == uid();
+      }
+
+      // viewers subcollection — currently unused (watchStory is TODO).
+      // Locked down for now; loosen when watchStory ships.
+      match /viewers/{authorId}/{viewerID} {
+        allow read, write: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // reports/{reportID}
+    //   Fields: reporterID, reportedUserID, reason, createdAt
+    //   Created by ModerationRepoImpl.reportUser. Never read by the app.
+    // ---------------------------------------------------------------------------
+    match /reports/{reportID} {
+      // Reads are admin-only (handled via Cloud Functions / console).
+      allow read: if false;
+      // Create: any signed-in user, with reporterID == caller and a non-empty reason.
+      allow create: if isSignedIn()
+        && request.resource.data.reporterID == uid()
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reportedUserID is string
+        && request.resource.data.createdAt is int;
+      // No updates or deletes from the client.
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Catch-all: deny everything else.
+    // ---------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

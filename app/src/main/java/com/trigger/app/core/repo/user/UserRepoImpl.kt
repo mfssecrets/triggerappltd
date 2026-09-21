@@ -7,6 +7,7 @@ import com.trigger.app.core.domain.User
 import com.trigger.app.core.repo.user.UserRepo.Companion.getStorageRefForProfilePic
 import com.trigger.app.core.repo.user.UserRepo.Companion.getUserProfileReference
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.ktx.Firebase

@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -14,13 +17,20 @@ plugins {
     id(libs.plugins.kapt.get().pluginId)
 }
 
+// --- Release signing config (loads creds from keystore/keystore.properties) ---
+val keystorePropsFile = rootProject.file("keystore/keystore.properties")
+val keystoreProps = Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace = "com.trigger.app"
     compileSdk = 34
 
     defaultConfig {
         val majorRelease = 1
-        val defaultRelease = 4
+        val defaultRelease = 0
         val minorRelease = 0
 
         applicationId = "com.trigger.app"
@@ -35,9 +45,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+                storeFile = rootProject.file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

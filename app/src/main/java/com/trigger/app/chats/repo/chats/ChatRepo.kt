@@ -74,9 +74,11 @@ interface ChatRepo {
     suspend fun disableChatsForUser(userID: String)
 
     /**
-     * Disables a specific chat
+     * Disables a specific chat (sets `chat_details/{chatID}.isDisabled = true`).
+     * Now suspends — awaits the Firestore Task before returning. Previously
+     * returned `.isSuccessful` on an incomplete Task which always returned false.
      */
-    fun disableChat(chatID: String)
+    suspend fun disableChat(chatID: String)
 
 
     suspend fun updateMessageStatus(messageID: String, messageStatus: MessageStatus)

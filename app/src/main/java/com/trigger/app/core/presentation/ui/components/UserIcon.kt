@@ -59,12 +59,19 @@ fun UserIcon(
             Image(
                 imageVector = Icons.Rounded.Person,// painterResource(id = R.drawable.young_man_anim),
                 contentDescription = null,
-                modifier
+                // FIX: previously `.apply { borderIfUsingDefaultPic?.let { border(...) } }`
+                // — `kotlin.apply` returns the receiver and the `border()` Modifier
+                // it computes was discarded. Use `Modifier.then(...)` so the border
+                // is actually attached to the Modifier chain.
+                modifier = Modifier
                     .fillMaxSize()
+                    .then(
+                        if (borderIfUsingDefaultPic != null)
+                            Modifier.border(borderIfUsingDefaultPic, DarkBlue, CircleShape)
+                        else
+                            Modifier
+                    )
                     .clip(CircleShape)
-                    .apply {
-                        borderIfUsingDefaultPic?.let { border(it, DarkBlue, CircleShape) }
-                    }
                     .padding(8.dp),
                 contentScale = ContentScale.Crop,
                 colorFilter = ColorFilter.tint(LocalAppColors.current.appThemeTextColor)

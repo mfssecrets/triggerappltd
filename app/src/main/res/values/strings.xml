@@ -14,6 +14,10 @@
     <string name="otp_resend_disabled">Resend available in %1$s</string>
     <string name="invalid_code">Invalid code. Please try again.</string>
 
+    <!-- Foreground-service notifications (required on API 26+ for background-started services) -->
+    <string name="foreground_service_reply_text">Listening for incoming messages</string>
+    <string name="foreground_service_unread_text">Checking for unread messages</string>
+
     <string name="number_too_short">The number is too short. Enter a valid number.</string>
     <string name="number_too_long">The number is too long. Enter a valid number.</string>
 

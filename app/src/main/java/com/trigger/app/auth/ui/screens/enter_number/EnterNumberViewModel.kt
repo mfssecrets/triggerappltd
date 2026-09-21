@@ -9,6 +9,7 @@ import com.trigger.app.core.domain.TaskState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import timber.log.Timber
@@ -22,7 +23,11 @@ class EnterNumberViewModel : ViewModel() {
     val country: StateFlow<Country> = _country
 
     val numberWithCountryCode =
-        number.map { "${country.value.phoneNoCode}$it".trim() }
+        // FIX: previously used `number.map { ... country.value ... }` which only
+        // re-emitted when `number` changed — picking a different country without
+        // retyping the digits produced a stale country-code prefix. `combine`
+        // re-emits whenever either side changes.
+        combine(number, country) { n, c -> "${c.phoneNoCode}$n".trim() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     private val _taskState = MutableStateFlow<TaskState?>(null)

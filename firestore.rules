@@ -54,12 +54,19 @@ service cloud.firestore {
     // ---------------------------------------------------------------------------
     // users/{uid} — root user profile
     //   Fields: name, uid, bio, profilePic, number, lastSeen, userStatus, username
+    //
+    // SECURITY: The owner can read/write everything. Other signed-in users can
+    // only read the public projection fields (name, uid, profilePic, username)
+    // via the dedicated `public_users/{uid}` collection (write-up below).
+    // `number` (the user's phone number) is owner-only.
     // ---------------------------------------------------------------------------
     match /users/{userId} {
 
-      // Anyone signed in can read any user profile (needed for chat previews,
-      // contact matching, story authors, etc.).
-      allow read: if isSignedIn();
+      // Only the owner can read the full profile (includes `number`, `lastSeen`,
+      // `userStatus`, `bio`). Other users reach MiniUser fields through
+      // `chat_details.firstMiniUser` / `secondMiniUser` (which they can only read
+      // if they are a chat participant), or via `public_users/{uid}`.
+      allow read: if isSignedIn() && userId == uid();
 
       // Create: only the owner, and the doc id must equal the auth uid.
       allow create: if isSignedIn()
@@ -96,6 +103,28 @@ service cloud.firestore {
         allow read:   if isSignedIn() && userId == uid();
         allow write:  if isSignedIn() && userId == uid();
       }
+    }
+
+    // ---------------------------------------------------------------------------
+    // public_users/{uid} — public profile projection
+    //   Fields: name, uid, profilePic, username
+    //   Written by the owner on create/update; readable by any signed-in user
+    //   so they can render a chat partner's name + avatar without exposing the
+    //   phone number or last-seen telemetry.
+    // ---------------------------------------------------------------------------
+    match /public_users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && userId == uid()
+        && request.resource.data.uid == uid()
+        && request.resource.data.name is string
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[a-z0-9_]{5,24}$');
+      allow update: if isSignedIn()
+        && userId == uid()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.username == resource.data.username;
+      allow delete: if isSignedIn() && userId == uid();
     }
 
     // ---------------------------------------------------------------------------
@@ -146,9 +175,15 @@ service cloud.firestore {
         && request.resource.data.secondMiniUser.uid is string
         && request.resource.data.firstMiniUser.uid != request.resource.data.secondMiniUser.uid;
 
-      // Update: only participants. Allow status/lastMessage/unread propagation,
-      // including the isDisabled=true flag that runs on block / account delete.
-      allow update: if isChatParticipant(chatID);
+      // Update: only participants. BLOCK identity mutation — neither
+      // firstMiniUser nor secondMiniUser can be rewritten, otherwise a
+      // malicious participant could swap in fake MiniUser maps and impersonate
+      // the other party. isDisabled / unreadMessagesCount / lastMessage*
+      // updates remain allowed.
+      allow update: if isChatParticipant(chatID)
+        && request.resource.data.firstMiniUser == resource.data.firstMiniUser
+        && request.resource.data.secondMiniUser == resource.data.secondMiniUser
+        && request.resource.data.chatID == resource.data.chatID;
 
       // Delete: not allowed through the client (chats are disabled, not deleted).
       allow delete: if false;
@@ -172,11 +207,13 @@ service cloud.firestore {
         && request.resource.data.timeSent is int
         && request.resource.data.messageStatus is string;
 
-      // Update: only participants. The app updates messageStatus (SENT,
-      // RECEIVED, OPENED), edits messageType (wasEdited=true), and unsends
-      // (delete). Allowing both participants to update is required because
-      // the receiver writes OPENED / RECEIVED on the sender's message.
-      allow update: if isChatParticipant(chatID);
+      // Update: only participants. BLOCK senderID mutation — otherwise the
+      // receiver could flip senderID to their own uid and fake a message as
+      // if it came from the other party. messageType / messageStatus / wasEdited
+      // updates remain allowed (for editing, unsend, mark-as-received/opened).
+      allow update: if isChatParticipant(chatID)
+        && request.resource.data.senderID == resource.data.senderID
+        && request.resource.data.messageID == resource.data.messageID;
 
       // Delete: only the sender of the message (unsend). Receiver cannot delete.
       allow delete: if isChatParticipant(chatID)

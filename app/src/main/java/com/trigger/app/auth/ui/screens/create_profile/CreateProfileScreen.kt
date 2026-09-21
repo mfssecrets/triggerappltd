@@ -83,7 +83,15 @@ fun CreateProfileScreen(
 
     val launcher =
         rememberLauncherForActivityResult(contract = CropImageContract()) { imageURI ->
+            // Reset BOTH flags unconditionally (regardless of whether the user
+            // picked an image, cancelled, or backed out) so a subsequent tap on
+            // the profile picture icon re-opens the cropper. The previous code
+            // only reset galleryIsOpen on the result callback, leaving
+            // shouldOpenGallery = true after a cancel — which then re-launched
+            // the cropper the moment the user touched the icon again.
+            shouldOpenGallery = false
             galleryIsOpen = false
+
             imageURI.uriContent?.let { uri ->
                 viewModel.updateProfilePic(uri)
             }

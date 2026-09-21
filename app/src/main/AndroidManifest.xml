@@ -8,6 +8,12 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Required to start a foreground service on API 26+ (Oreo). Without this,
+         startForegroundService() throws SecurityException at runtime. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required on Android 14 (API 34) for foregroundServiceType="dataSync". -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -33,8 +39,16 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".notifications.ReplyService" android:exported="false"/>
-        <service android:name=".notifications.UnreadMessagesService" android:exported="false"/>
+        <!-- foregroundServiceType="dataSync" is required on Android 14+ when
+             startForeground() is called with FOREGROUND_SERVICE_TYPE_DATA_SYNC. -->
+        <service
+            android:name=".notifications.ReplyService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".notifications.UnreadMessagesService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver android:name=".notifications.ReplyNotificationReceiver" android:exported="false"/>
 

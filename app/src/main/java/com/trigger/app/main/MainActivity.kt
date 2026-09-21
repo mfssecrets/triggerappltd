@@ -1,11 +1,13 @@
 package com.trigger.app.main
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -79,6 +81,7 @@ import com.trigger.app.core.presentation.ui.CreateMyPage
 import com.trigger.app.core.presentation.ui.ReportUser
 import com.trigger.app.stories.ui.screens.all_stories.StoriesScreen
 import com.trigger.app.welcome.WelcomeScreen
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import timber.log.Timber
@@ -86,16 +89,36 @@ import timber.log.Timber
 class MainActivity : ComponentActivity() {
 
     private var userStatusMoniter = UserStatusMoniter()
-    private val replyService by lazy { ReplyService() }
-    private val unreadMessagesService by lazy { UnreadMessagesService() }
-
 
     val viewModel: MainViewModel by viewModels()
 
+    /**
+     * Auth-ready gate. Set true once the [FirebaseAuth.AuthStateListener] has
+     * reported the current Auth state for the first time. This prevents the
+     * `startDestination` race where `Firebase.auth.uid` was read synchronously
+     * at composition — which on cold launch can return null for ~100ms while
+     * Firebase Auth restores the current user from disk, causing the user to
+     * briefly see the Welcome screen even if they're signed in.
+     */
+    private val authReady = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val isSignedIn = kotlinx.coroutines.flow.MutableStateFlow(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        // Keep the splash screen visible until auth state is ready.
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !authReady.value }
+
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // Register an AuthStateListener to detect the user's session (or null)
+        // as soon as Firebase Auth has finished restoring from disk.
+        Firebase.auth.addAuthStateListener { auth ->
+            val uid = auth.currentUser?.uid
+            isSignedIn.value = (uid != null)
+            // Once we've received the first callback we know Auth is initialised.
+            authReady.value = true
+        }
 
         setContent {
             AppTheme {
@@ -104,22 +127,29 @@ class MainActivity : ComponentActivity() {
                 val coroutineScope = rememberCoroutineScope()
                 val navController = rememberNavController()
 
-                // Controls the status bars
                 val statusBars by viewModel.statusBars.collectAsState()
                 val view = LocalView.current
                 LaunchedEffect(key1 = statusBars) {
                     changeStatusBarColor(view, statusBars?.barColor, statusBars?.useDarkIcons)
                 }
 
+                // Gate the entire NavHost on authReady — splash screen stays
+                // up until Firebase Auth has reported its first state.
+                val ready by authReady.collectAsState()
+                val signedIn by isSignedIn.collectAsState()
 
+                if (!ready) {
+                    // Splash screen is still up; render an empty box as a placeholder.
+                    Box(Modifier.fillMaxSize())
+                    return@AppTheme
+                }
+
+                // We have the auth state now — derive start destination without race.
                 LaunchedEffect(key1 = Unit) {
-//                    if (Firebase.auth.uid == null)
-//                        navController.navigate(Welcome)
-
                     val currentUser = viewModel.fetchCurrentUser()
 
-                    if (currentUser?.uid == null && Firebase.auth.uid != null) { // User registered but didn't create their profile
-                        // Navigate to the CreateProfile screen
+                    if (currentUser?.uid == null && Firebase.auth.uid != null) {
+                        // User registered but didn't create their profile.
                         val phone = Firebase.auth.currentUser?.phoneNumber ?: ""
                         navController.navigateSafely(CreateProfile(phone))
                     }
@@ -141,8 +171,7 @@ class MainActivity : ComponentActivity() {
 
                         NavHost(
                             navController = navController,
-                            startDestination = if (Firebase.auth.uid == null) Welcome else AllChats
-//                            startDestination = AllChats// if (Firebase.auth.uid == null) Welcome else AllChats
+                            startDestination = if (signedIn) AllChats else Welcome
                         ) {
 
                             composable<Welcome> {
@@ -232,11 +261,6 @@ class MainActivity : ComponentActivity() {
                             composable<Stories> {
                                 StoriesScreen(navController = navController, coroutineScope = coroutineScope)
                             }
-//                            composable<ViewStory> {
-//                                val args = it.toRoute<ViewStory>()
-//                                ViewStoryScreen(authorID = args.authorID)
-//                            }
-
 
 
                             composable<AllChats> {
@@ -272,10 +296,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            composable<SendImage>(
-//                                TODO: Find a way to change this
-//                                typeMap = mapOf(typeOf<SendImageIn>() to parcelableType<SendImageIn>())
-                            ) {
+                            composable<SendImage> {
                                 val args = it.toRoute<SendImage>()
                                 val chatID = args.chatId
 
@@ -283,7 +304,6 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     imageUri = args.imageUri,
                                     sendImageIn = if (chatID != null) SendImageIn.Chat(chatID) else SendImageIn.Story
-//                                    onSendImage = args.onSendImage
                                 )
                             }
 
@@ -305,15 +325,45 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         userStatusMoniter.moniter()
 
-        replyService.stopSelf()
-        startService(Intent(this, UnreadMessagesService::class.java))
+        // Migrated from startService() to startForegroundService() on API 26+.
+        // ReplyService + UnreadMessagesService each call startForeground() within
+        // 5s of onCreate, which is required for foreground-service starts from a
+        // backgrounded Activity (otherwise the OS throws IllegalStateException).
+
+        // Stop the ReplyService that was (likely) started in the previous onStop()
+        // — we're now in the foreground, so the user-visible notification flow
+        // takes over from the background listener.
+        stopService(Intent(this, ReplyService::class.java))
+
+        // Start the UnreadMessagesService in foreground mode (it will be stopped
+        // in onStop()).
+        startForegroundServiceSafely(UnreadMessagesService::class.java)
     }
 
     override fun onStop() {
         super.onStop()
         userStatusMoniter.removeMoniter()
 
-        startService(Intent(this, ReplyService::class.java))
-        unreadMessagesService.stopSelf()
+        // Stop the UnreadMessagesService started in onStart().
+        stopService(Intent(this, UnreadMessagesService::class.java))
+
+        // Start the ReplyService in foreground mode (it will be stopped in
+        // onStart() when the user comes back to the foreground).
+        startForegroundServiceSafely(ReplyService::class.java)
+    }
+
+    /**
+     * Helper that uses [startForegroundService] on API 26+ (Oreo) and falls back
+     * to the deprecated [startService] on older API levels. The target service
+     * MUST call `startForeground(id, notification)` within 5 seconds of being
+     * started, otherwise the OS throws ForegroundServiceDidNotStartInTimeException.
+     */
+    private fun startForegroundServiceSafely(serviceClass: Class<out android.app.Service>) {
+        val intent = Intent(this, serviceClass)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
     }
 }

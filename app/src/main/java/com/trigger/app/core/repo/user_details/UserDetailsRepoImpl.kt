@@ -11,6 +11,7 @@ import com.trigger.app.core.domain.User
 import com.trigger.app.core.domain.UserStatus
 import com.trigger.app.core.domain.isOnline
 import com.trigger.app.core.domain.toMiniUser
+import com.trigger.app.core.repo.user.UserRepo.Companion.getPublicUserProfileReference
 import com.trigger.app.core.repo.user.UserRepo.Companion.getStorageRefForProfilePic
 import com.trigger.app.core.repo.user.UserRepo.Companion.getUserProfileReference
 import com.google.firebase.auth.ktx.auth
@@ -100,19 +101,37 @@ class UserDetailsRepoImpl : UserDetailsRepo {
             getUserProfileReference(userID).get().await().toObject(User::class.java)?.toMiniUser()
         val newCurrentUser = currentUser?.copy(name = newName)
 
-        val isSuccessful = getUserProfileReference(userID)
-            .update(User::name.name, newName)
-            .isSuccessful
+        // Await the Firestore Task — fixes the previous .isSuccessful-on-incomplete-Task
+        // bug that always returned false. Now reflects the real outcome.
+        val isSuccessful = try {
+            getUserProfileReference(userID)
+                .update(User::name.name, newName)
+                .await()
+            // Mirror the update to the public_users projection so other users
+            // see the new name on chat previews without leaking the phone number.
+            getPublicUserProfileReference(userID)
+                .update("name", newName)
+                .await()
+            true
+        } catch (e: Exception) {
+            Timber.e(e, "updateUserName: failed for userID=$userID")
+            false
+        }
 
         updateUserProfileInExistingChats(currentUser, newCurrentUser)
 
-        return isSuccessful // TODO: Make this more accurate since it should reflect the success of all tasks, not the first one only
+        return isSuccessful
     }
 
-    override suspend fun updateUserBio(userID: String, newBio: String): Boolean =
+    override suspend fun updateUserBio(userID: String, newBio: String): Boolean = try {
         getUserProfileReference(userID)
             .update(User::bio.name, newBio)
-            .isSuccessful
+            .await()
+        true
+    } catch (e: Exception) {
+        Timber.e(e, "updateUserBio: failed for userID=$userID")
+        false
+    }
 
 
     override fun updateUserLastSeen(userID: String, lastSeen: Long) {

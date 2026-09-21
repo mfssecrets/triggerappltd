@@ -122,24 +122,27 @@ class ChatRepoImpl(private val userRepo: UserRepo = UserRepoImpl()) : ChatRepo {
             .map { it.chatID }
         Timber.d("chatIDs to disable are: $chatIDs")
 
+        // Set isDisabled=true on each chat_details doc (awaits each — fixes the
+        // previous .isSuccessful-on-incomplete-Task bug that always returned false).
         chatIDs.forEach { chatID -> disableChat(chatID) }
 
-        // Remove the list of personalized chats he/she used to have {prevents space wastage}
-        val listOfPersonalizedIDs = getPersonalizedChatsFirebaseRef(userID).get()
-            .await().toObjects(ChatRepo.PersonalizedChat::class.java).map { it.chatID }
-
-        listOfPersonalizedIDs.forEach { chatID ->
-            getPersonalizedChatsFirebaseRef(userID).document(chatID).delete()
+        // Remove the user's own personalized_chats entries — re-fetch is wasteful
+        // (chatIDs above is the same set), so reuse it.
+        chatIDs.forEach { chatID ->
+            getPersonalizedChatsFirebaseRef(userID).document(chatID).delete().await()
         }
     }
 
 
-    override fun disableChat(chatID: String) {
-        val disableChat = getChatDetailsRef(chatID)
-            .update(Chat::isDisabled.name, true)
-            .isSuccessful
-
-        Timber.d("disableChat.isSuccessful is $disableChat")
+    override suspend fun disableChat(chatID: String) {
+        try {
+            getChatDetailsRef(chatID)
+                .update(Chat::isDisabled.name, true)
+                .await()
+            Timber.d("disableChat: chatID=$chatID isDisabled=true written")
+        } catch (e: Exception) {
+            Timber.e(e, "disableChat: failed for chatID=$chatID")
+        }
     }
 
 

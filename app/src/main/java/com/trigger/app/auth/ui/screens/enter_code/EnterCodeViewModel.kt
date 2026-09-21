@@ -49,11 +49,15 @@ class EnterCodeViewModel(
         .map { it is TaskState.NONE }
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    /**
-     * The app moves to Chromes to verify if the user is real
-     * Using isAuthenticating prevents double authentication
-     */
     private var isAuthenticating = false
+
+    /**
+     * The active [CountDownTimer]. Stored as a field so we can [cancel] it
+     * before starting a new one when the user taps "Resend OTP" — otherwise
+     * multiple timers race on [_timeLeftInMillis] and you get flicker / wrong
+     * counts.
+     */
+    private var countDownTimer: CountDownTimer? = null
 
 
     companion object {
@@ -72,18 +76,23 @@ class EnterCodeViewModel(
 
 
     private fun startTimer() {
+        // Cancel any in-flight timer before starting a new one. Otherwise the
+        // previous timer's onTick keeps writing to _timeLeftInMillis while the
+        // new one also writes — the UI flickers between two countdowns.
+        countDownTimer?.cancel()
+
         _timeLeftInMillis.value = SMS_TIMEOUT
 
-        val timer = object : CountDownTimer(SMS_TIMEOUT, SECOND_IN_MILLIS) {
+        countDownTimer = object : CountDownTimer(SMS_TIMEOUT, SECOND_IN_MILLIS) {
             override fun onTick(millisUntilFinished: Long) {
                 _timeLeftInMillis.value = millisUntilFinished
             }
 
             override fun onFinish() {
                 isAuthenticating = false
+                _timeLeftInMillis.value = 0
             }
-        }
-        timer.start()
+        }.also { it.start() }
     }
 
 
@@ -149,6 +158,14 @@ class EnterCodeViewModel(
      */
     fun resetTaskState() {
         _taskState.value = TaskState.NONE
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Cancel the CountDownTimer so it doesn't keep writing to
+        // _timeLeftInMillis (and waste a main-thread Handler) after the
+        // NavBackStackEntry is destroyed.
+        countDownTimer?.cancel()
     }
 
 }

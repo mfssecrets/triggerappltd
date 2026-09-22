@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -39,6 +40,7 @@ import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.Calls
 import com.trigger.app.core.presentation.ui.Groups
 import com.trigger.app.core.presentation.ui.MyProfile
+import com.trigger.app.core.presentation.ui.Notifications
 import com.trigger.app.core.presentation.ui.Stories
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.DarkBlue
@@ -46,12 +48,12 @@ import com.trigger.app.core.presentation.ui.theme.LightGrey
 import com.trigger.app.core.presentation.ui.theme.QuickSand
 
 enum class BottomBars {
-    AllChats, Groups, Stories, Calls, Profile
+    AllChats, Stories, Calls, Notifications, Profile
 }
 
-// 5 tabs: Chats | Groups | Stories | Calls | Profile
-// The "Start a chat" (+) action used to live here as a center-docked FAB; it has
-// moved to the top-right of the AllChats screen's app bar.
+// 5 tabs: Chats | Stories | Calls | Notifications | Profile
+// Groups has moved to a sub-page accessible from the Chats screen's top bar.
+// The "Start a chat" (+) action lives in the top-right of AllChats.
 @Composable
 fun AppBottomBar(
     currentBottomBar: BottomBars,
@@ -100,17 +102,6 @@ fun AppBottomBar(
             )
 
             BottomAppBarItem(
-                isActive = BottomBars.Groups.isCurrentScreen(currentBottomBar),
-                icon = painterResource(id = R.drawable.groups),
-                content = stringResource(R.string.groups),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    if (!BottomBars.Groups.isCurrentScreen(currentBottomBar))
-                        navController.navigate(Groups)
-                }
-            )
-
-            BottomAppBarItem(
                 isActive = BottomBars.Stories.isCurrentScreen(currentBottomBar),
                 icon = painterResource(id = R.drawable.stories),
                 content = stringResource(R.string.stories),
@@ -129,6 +120,17 @@ fun AppBottomBar(
                 onClick = {
                     if (!BottomBars.Calls.isCurrentScreen(currentBottomBar))
                         navController.navigate(Calls)
+                }
+            )
+
+            BottomAppBarItem(
+                isActive = BottomBars.Notifications.isCurrentScreen(currentBottomBar),
+                imageVector = Icons.Rounded.Notifications,
+                content = stringResource(R.string.notifications),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    if (!BottomBars.Notifications.isCurrentScreen(currentBottomBar))
+                        navController.navigate(Notifications)
                 }
             )
 

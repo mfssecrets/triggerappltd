@@ -125,7 +125,29 @@ class UserRepoImpl : UserRepo {
     override suspend fun getUserByUsername(username: String): User? {
         val usernameSnapshot = getUsernameReference(username).get().await()
         val uid = usernameSnapshot.getString("uid") ?: return null
-        return getUserFromUID(uid)
+
+        // Read from public_users/{uid} instead of users/{uid} — the users/{uid}
+        // doc is owner-only-read under the new rules. public_users has
+        // {uid, name, profilePic, username, fcmToken} — not the full User
+        // (no number, bio, lastSeen, userStatus). Construct a partial User with
+        // defaults for the private fields.
+        return try {
+            val publicDoc = getPublicUserProfileReference(uid).get().await()
+            val data = publicDoc.data ?: return null
+            User(
+                uid = uid,
+                name = data["name"] as? String ?: "",
+                bio = "",  // not in public projection
+                profilePic = data["profilePic"] as? String?,
+                number = "",  // not in public projection
+                lastSeen = 0,  // not in public projection
+                userStatus = UserStatus.HasDataButNotInApp,  // default
+                username = data["username"] as? String ?: ""
+            )
+        } catch (e: Exception) {
+            Timber.e(e, "getUserByUsername: public_users read failed for uid=$uid")
+            null
+        }
     }
 
 

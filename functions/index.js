@@ -260,3 +260,140 @@ exports.onDeleteUser = onDocumentDeleted(
     }
   }
 );
+
+// ============================================================================
+// 5. onNewChatMessage — FCM push notification for new messages
+//    Triggers on chats/{chatID}/messages/{messageID}.onCreate. Looks up the
+//    OTHER participant's FCM token from public_users/{uid}.fcmToken and sends
+//    a push via Firebase Cloud Messaging.
+// ============================================================================
+exports.onNewChatMessage = onDocumentCreated(
+  "chats/{chatID}/messages/{messageID}",
+  async (event) => {
+    const { chatID } = event.params;
+    const message = event.data?.data();
+    if (!message) return;
+
+    // Look up the chat_details to find both participants.
+    const chatDoc = await db.doc(`chat_details/${chatID}`).get();
+    if (!chatDoc.exists) return;
+
+    const chat = chatDoc.data();
+    const senderID = message.senderID;
+    const firstUID = chat.firstMiniUser?.uid;
+    const secondUID = chat.secondMiniUser?.uid;
+    const recipientUID = senderID === firstUID ? secondUID : firstUID;
+
+    if (!recipientUID) return;
+
+    // Look up the recipient's FCM token + the sender's name + profilePic.
+    const recipientDoc = await db.doc(`public_users/${recipientUID}`).get();
+    const fcmToken = recipientDoc.data()?.fcmToken;
+    if (!fcmToken) return;
+
+    const senderDoc = await db.doc(`public_users/${senderID}`).get();
+    const senderName = senderDoc.data()?.name || "New message";
+    const senderProfilePic = senderDoc.data()?.profilePic || null;
+
+    // Build the message preview (truncate long messages).
+    let preview = "";
+    if (message.messageType) {
+      const type = message.messageType.type;
+      const msg = message.messageType.message || "";
+      if (type === "Text") {
+        preview = msg.length > 100 ? msg.substring(0, 97) + "..." : msg;
+      } else if (type === "Image") {
+        preview = "📷 Photo";
+      } else if (type === "Audio") {
+        preview = "🎙️ Voice message";
+      } else if (type === "Video") {
+        preview = "🎥 Video";
+      } else {
+        preview = "New message";
+      }
+    }
+
+    // Send the FCM push.
+    const payload = {
+      token: fcmToken,
+      notification: {
+        title: senderName,
+        body: preview,
+      },
+      data: {
+        type: "message",
+        chatID: chatID,
+        senderID: senderID,
+        senderName: senderName,
+        messagePreview: preview,
+        senderProfilePic: senderProfilePic || "",
+      },
+      android: {
+        notification: {
+          channelId: "CHAT_MESSAGES_CHANNEL_ID",
+          priority: "high",
+        },
+      },
+    };
+
+    try {
+      await admin.messaging().send(payload);
+      console.log(`onNewChatMessage: FCM push sent to ${recipientUID} for chat ${chatID}`);
+    } catch (e) {
+      console.warn(`onNewChatMessage: FCM send failed for ${recipientUID}`, e);
+    }
+  }
+);
+
+// ============================================================================
+// 6. lookupUsersByPhone — HTTPS callable for contact-based user discovery
+//    The client can't query users/{uid}.number (owner-only-read rule). This
+//    function runs with admin privileges and returns a list of {uid, name,
+//    username, profilePic} for each phone number that matches a user in the DB.
+// ============================================================================
+const { onCall } = require("firebase-functions/v2/https");
+
+exports.lookupUsersByPhone = onCall(
+  async (request) => {
+    const phoneNumbers = request.data?.phoneNumbers;
+    if (!Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return { users: [] };
+    }
+
+    // Auth check — only signed-in users can call this.
+    if (!request.auth) {
+      throw new Error("UNAUTHENTICATED: Must be signed in to call lookupUsersByPhone.");
+    }
+
+    // Query users by phone number in batches of 30 (Firestore whereIn limit).
+    const matchedUsers = [];
+    for (let i = 0; i < phoneNumbers.length; i += 30) {
+      const batch = phoneNumbers.slice(i, i + 30);
+      const snap = await db.collection("users")
+        .where("number", "in", batch)
+        .get();
+
+      for (const doc of snap.docs) {
+        const data = doc.data();
+        matchedUsers.push({
+          uid: doc.id,
+          name: data.name || "",
+          username: data.username || "",
+          number: data.number || "",
+        });
+      }
+    }
+
+    // Also look up profilePic from public_users for each match.
+    for (const user of matchedUsers) {
+      try {
+        const publicDoc = await db.doc(`public_users/${user.uid}`).get();
+        user.profilePic = publicDoc.data()?.profilePic || null;
+      } catch (e) {
+        user.profilePic = null;
+      }
+    }
+
+    return { users: matchedUsers };
+  }
+);

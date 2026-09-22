@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -52,6 +53,7 @@ import com.trigger.app.chats.presentation.view_profile_pic.ControlBlurOnScreen
 import com.trigger.app.core.presentation.ui.ActualChat
 import com.trigger.app.core.presentation.ui.SelectContact
 import com.trigger.app.core.presentation.ui.MessageRequests
+import com.trigger.app.core.presentation.ui.Groups
 import com.trigger.app.core.presentation.ui.Settings
 import com.trigger.app.core.presentation.ui.components.AppBottomBar
 import com.trigger.app.core.presentation.ui.components.BottomBars
@@ -124,14 +126,23 @@ fun AllChatsScreen(
                     }
                 )
 
-                // Top-right action group: Mail (Message Requests) + Add (Start a chat).
-                // The Add icon used to be a center-docked FAB in the bottom bar; it has
-                // moved here per the new layout (5 bottom tabs, no FAB).
+                // Top-right action group: Groups (sub-page) + Mail (Message Requests) + Add (Start a chat).
+                // Groups has been moved here from the bottom nav per the new 5-tab layout
+                // (Chats | Stories | Calls | Notifications | Profile). The + action used to
+                // be a center-docked FAB in the bottom bar; it has moved here too.
                 Row(
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    TintedAppBarIcon(
+                        imageVector = Icons.Rounded.Groups,
+                        contentDescription = stringResource(R.string.groups),
+                        onClick = {
+                            navController.navigateSafely(Groups)
+                        }
+                    )
+
                     TintedAppBarIcon(
                         imageVector = Icons.Rounded.Email,
                         contentDescription = stringResource(R.string.message_requests),
@@ -139,6 +150,22 @@ fun AllChatsScreen(
                             navController.navigateSafely(MessageRequests)
                         }
                     )
+
+                    // Unread message count badge on the Mail icon.
+                    val unreadCount = chats?.sumOf { it.unreadMessagesCount } ?: 0
+                    if (unreadCount > 0) {
+                        androidx.compose.material3.Badge(
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Text(
+                                text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                fontSize = 10.sp,
+                                fontFamily = QuickSand,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
 
                     TintedAppBarIcon(
                         imageVector = Icons.Rounded.Add,

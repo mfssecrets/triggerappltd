@@ -50,6 +50,15 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Firebase Cloud Messaging service for push notifications -->
+        <service
+            android:name=".notifications.TriggerMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".notifications.ReplyNotificationReceiver" android:exported="false"/>
 
         <activity

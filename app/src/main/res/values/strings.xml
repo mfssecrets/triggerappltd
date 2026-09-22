@@ -123,6 +123,7 @@
     <string name="chats">Chats</string>
     <string name="groups">Groups</string>
     <string name="calls">Calls</string>
+    <string name="notifications">Notifications</string>
     <string name="send">Send</string>
     <string name="choose_username">Choose your username</string>
     <string name="username_help">People can find and message you using this username.</string>

@@ -289,6 +289,9 @@ class MainActivity : ComponentActivity() {
                             composable<Calls> {
                                 CallsScreen(navController = navController)
                             }
+                            composable<Notifications> {
+                                MessageRequestsScreen(navController)
+                            }
 
 
                             composable<Stories> {

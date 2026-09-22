@@ -124,6 +124,9 @@ service cloud.firestore {
         && userId == uid()
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.username == resource.data.username;
+      // Allow the owner to update specific fields (fcmToken, profilePic, name)
+      // without re-validating the whole doc. The immutable fields (uid, username)
+      // are still checked above.
       allow delete: if isSignedIn() && userId == uid();
     }
 

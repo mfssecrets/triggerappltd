@@ -46,7 +46,7 @@ fun GroupsScreen(navController: NavController) {
             )
 
             AppBottomBar(
-                currentBottomBar = BottomBars.Groups,
+                currentBottomBar = BottomBars.AllChats,
                 navController = navController,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )

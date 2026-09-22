@@ -88,6 +88,8 @@ object BlockedUsers
 object VerifiedBadge
 @Serializable
 object CreateMyPage
+@Serializable
+object Notifications
 
 @Serializable
 data class ReportUser(val userID: String)

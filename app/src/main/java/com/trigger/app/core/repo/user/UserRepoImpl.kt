@@ -11,6 +11,7 @@ import com.google.firebase.storage.ktx.storage
 import com.trigger.app.R
 import com.trigger.app.core.domain.TaskState
 import com.trigger.app.core.domain.User
+import com.trigger.app.core.domain.UserStatus
 import com.trigger.app.core.repo.user.UserRepo.Companion.getPublicUserProfileReference
 import com.trigger.app.core.repo.user.UserRepo.Companion.getStorageRefForProfilePic
 import com.trigger.app.core.repo.user.UserRepo.Companion.getUserProfileReference

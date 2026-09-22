@@ -52,6 +52,7 @@ import com.trigger.app.core.presentation.ui.EnterNumber
 import com.trigger.app.core.presentation.ui.Groups
 import com.trigger.app.core.presentation.ui.Help
 import com.trigger.app.core.presentation.ui.MyProfile
+import com.trigger.app.core.presentation.ui.Notifications
 import com.trigger.app.core.presentation.ui.MessageRequests
 import com.trigger.app.core.presentation.ui.SelectContact
 import com.trigger.app.core.presentation.ui.SendImage

@@ -18,7 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -136,34 +137,37 @@ fun AllChatsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TintedAppBarIcon(
-                        imageVector = Icons.Rounded.Groups,
+                        imageVector = Icons.Rounded.Group,
                         contentDescription = stringResource(R.string.groups),
                         onClick = {
                             navController.navigateSafely(Groups)
                         }
                     )
 
-                    TintedAppBarIcon(
-                        imageVector = Icons.Rounded.Email,
-                        contentDescription = stringResource(R.string.message_requests),
-                        onClick = {
-                            navController.navigateSafely(MessageRequests)
-                        }
-                    )
+                    // Wrap Mail icon + unread badge in a Box so Modifier.align works.
+                    Box {
+                        TintedAppBarIcon(
+                            imageVector = Icons.Rounded.Email,
+                            contentDescription = stringResource(R.string.message_requests),
+                            onClick = {
+                                navController.navigateSafely(MessageRequests)
+                            }
+                        )
 
-                    // Unread message count badge on the Mail icon.
-                    val unreadCount = chats?.sumOf { it.unreadMessagesCount } ?: 0
-                    if (unreadCount > 0) {
-                        androidx.compose.material3.Badge(
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        ) {
-                            Text(
-                                text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                                fontSize = 10.sp,
-                                fontFamily = QuickSand,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                        // Unread message count badge on the Mail icon.
+                        val unreadCount = chats?.sumOf { it.unreadMessagesCount } ?: 0
+                        if (unreadCount > 0) {
+                            androidx.compose.material3.Badge(
+                                modifier = Modifier.align(Alignment.TopEnd)
+                            ) {
+                                Text(
+                                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                    fontSize = 10.sp,
+                                    fontFamily = QuickSand,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
 

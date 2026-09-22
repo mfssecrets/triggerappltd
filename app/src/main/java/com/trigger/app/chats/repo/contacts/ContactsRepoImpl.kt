@@ -108,18 +108,33 @@ class ContactsRepoImpl(
         }.filter { it.isNotEmpty() }
 
         val contactsOnTriggerApp = mutableListOf<User>()
+
+        // The whereIn query on users/{uid}.number is permission-denied under the
+        // new owner-only-read rules. Wrap each batch in try-catch so a
+        // permission-denied error doesn't crash the app — just return an empty
+        // list (the user will see "No contacts on Trigger App" instead of a
+        // crash). The proper fix is a Cloud Function that takes phone numbers
+        // and returns matching UIDs (server-side, not subject to rules).
         shorterPhoneContacts.forEach { listToCheck ->
-            contactsOnTriggerApp.addAll(
-                firestore
-                    .collection(UserRepo.USERS_COLLECTION)
-                    .whereIn(User::number.name, listToCheck)
-                    .get()
-                    .await()
-                    .toObjects(User::class.java)
-            )
+            try {
+                contactsOnTriggerApp.addAll(
+                    firestore
+                        .collection(UserRepo.USERS_COLLECTION)
+                        .whereIn(User::number.name, listToCheck)
+                        .get()
+                        .await()
+                        .toObjects(User::class.java)
+                )
+            } catch (e: Exception) {
+                Timber.e(e, "refreshContactsOnTriggerApp: whereIn batch failed (permission-denied under new rules)")
+            }
         }
 
-        localContactDao.refreshContacts(contactsOnTriggerApp.toLocalContacts())
+        try {
+            localContactDao.refreshContacts(contactsOnTriggerApp.toLocalContacts())
+        } catch (e: Exception) {
+            Timber.e(e, "refreshContactsOnTriggerApp: Room refresh failed")
+        }
 
         Timber.d("contactsOnTriggerApp is $contactsOnTriggerApp")
     }

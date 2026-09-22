@@ -42,7 +42,18 @@ class ViewStoryViewModel(
 
 
     fun loadUser(authorID: String) = viewModelScope.launch {
-        _author.value = userRepo.getUserFromUID(authorID)
+        // Under the new owner-only-read rules on users/{uid}, this read will
+        // FAIL for any non-owner authorID. The profile details (name, profilePic)
+        // will be null. The ViewStoryScreen already handles null author gracefully
+        // (shows blank name + no profile pic). The proper fix is to read from
+        // public_users/{uid} instead — but that requires a separate repo method.
+        // For now, catch the permission-denied error so it doesn't crash the app.
+        try {
+            _author.value = userRepo.getUserFromUID(authorID)
+        } catch (e: Exception) {
+            Timber.e(e, "loadUser: permission-denied or network error for authorID=$authorID (non-fatal)")
+            _author.value = null
+        }
     }
 
     fun loadStories(authorID: String) = viewModelScope.launch {

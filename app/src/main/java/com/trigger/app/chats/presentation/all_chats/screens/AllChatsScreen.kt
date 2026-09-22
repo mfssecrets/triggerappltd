@@ -18,8 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -136,12 +136,18 @@ fun AllChatsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TintedAppBarIcon(
-                        imageVector = Icons.Rounded.Group,
+                    // Groups sub-page icon — uses R.drawable.groups painter
+                    // (Icons.Rounded.Group/Groups not in core Material icons set).
+                    Icon(
+                        painter = painterResource(id = R.drawable.groups),
                         contentDescription = stringResource(R.string.groups),
-                        onClick = {
-                            navController.navigateSafely(Groups)
-                        }
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(LocalAppColors.current.blueCardColor)
+                            .padding(5.dp)
+                            .clickable { navController.navigateSafely(Groups) },
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
 
                     // Wrap Mail icon + unread badge in a Box so Modifier.align works.

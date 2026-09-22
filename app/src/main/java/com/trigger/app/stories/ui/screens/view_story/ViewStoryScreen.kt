@@ -48,8 +48,11 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import com.trigger.app.R
 import com.trigger.app.core.presentation.ui.components.Glider
 import com.trigger.app.core.presentation.ui.components.UserIcon
@@ -84,6 +87,12 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
 
     // Snackbar-equivalent: surface reply-send success / failure briefly.
     var replyMessage by remember { mutableStateOf<String?>(null) }
+
+    // Resolve the error string at composition time so we don't call
+    // stringResource (a @Composable function) from inside the non-composable
+    // sendReply / deleteCurrentStory callbacks.
+    val replyFailedMessage = stringResource(R.string.story_reply_failed)
+    val errorMessage = stringResource(R.string.error_occurred)
 
     LaunchedEffect(key1 = Unit) {
         viewModel.loadUser(authorID)
@@ -201,10 +210,8 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                             onTextChange = { viewModel.updateTypedMessage(it) },
                             onSendClick = {
                                 viewModel.sendReply { success ->
-                                    replyMessage = if (success)
-                                        stringResource(R.string.story_reply_sent)
-                                    else
-                                        stringResource(R.string.story_reply_failed)
+                                    replyMessage = if (success) null
+                                    else replyFailedMessage
                                 }
                             },
                             modifier = Modifier.padding(top = 8.dp)
@@ -245,9 +252,7 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                     Spacer(modifier = Modifier.weight(1f))
 
                     // 3-dot menu — only the author gets the Delete option.
-                    val isAuthor = authorID == com.google.firebase.auth.ktx.auth.let {
-                        com.google.firebase.ktx.Firebase.auth.uid
-                    }
+                    val isAuthor = authorID == Firebase.auth.uid
                     if (isAuthor) {
                         Box {
                             IconButton(onClick = { showOptionsDropdown = true }) {
@@ -305,7 +310,7 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                         showDeleteConfirmation = false
                         viewModel.deleteCurrentStory { success ->
                             replyMessage = if (success) null  // no toast on success
-                            else stringResource(R.string.error_occurred)
+                            else errorMessage
                         }
                     }) { Text(stringResource(R.string.yes)) }
                 },

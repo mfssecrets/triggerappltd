@@ -2,6 +2,8 @@ package com.trigger.app.stories.ui.screens.view_story
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import com.trigger.app.core.domain.User
 import com.trigger.app.core.repo.user.UserRepo
 import com.trigger.app.stories.domain.Story
@@ -151,9 +153,7 @@ class ViewStoryViewModel(
             return@launch
         }
         // Only the author can delete. The repo will also enforce this via rules.
-        if (story.authorUID != com.google.firebase.auth.ktx.auth.let {
-                com.google.firebase.ktx.Firebase.auth.uid
-            }) {
+        if (story.authorUID != Firebase.auth.uid) {
             onResult(false)
             return@launch
         }

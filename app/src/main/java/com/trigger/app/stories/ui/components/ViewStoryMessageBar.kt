@@ -94,7 +94,7 @@ fun ViewStoryMessageBar(
                 // as the Send TextButton. Both respect the whitespace-trim
                 // guard.
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = sendIfValid),
+                keyboardActions = KeyboardActions(onSend = { sendIfValid() }),
                 colors = TextFieldDefaults.colors(
                     unfocusedContainerColor = Color.Transparent,
                     focusedContainerColor = Color.Transparent,

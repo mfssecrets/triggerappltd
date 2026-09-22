@@ -5,12 +5,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,15 +20,25 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,7 +48,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.trigger.app.R
@@ -51,6 +62,7 @@ import com.trigger.app.core.presentation.ui.theme.QuickSand
 import com.trigger.app.stories.domain.StoryPreview
 import com.trigger.app.stories.ui.components.StoryTopCountIndicator
 import com.trigger.app.stories.ui.components.ViewStoryMessageBar
+import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 
@@ -66,12 +78,20 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
 
     val typedMessage by viewModel.typedMessage.collectAsState()
 
+    // Menu + confirmation-dialog state for delete-story.
+    var showOptionsDropdown by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    // Snackbar-equivalent: surface reply-send success / failure briefly.
+    var replyMessage by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(key1 = Unit) {
         viewModel.loadUser(authorID)
         viewModel.loadStories(authorID)
     }
 
-    // TODO: Change this to automatically go to the next person's story
+    // Hide-story listener — fires when the user reaches past the last story
+    // (either by tapping right on the last one or by deleting all stories).
     LaunchedEffect(key1 = hideStory) {
         if (hideStory) {
             onHideStory()
@@ -89,43 +109,62 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
             val pagerState = rememberPagerState { stories!!.size }
             val localConfiguration = LocalConfiguration.current
 
-
+            // Sync pagerState ← storyIndex (programmatic next/prev).
             LaunchedEffect(key1 = storyIndex) {
                 if (storyIndex != pagerState.currentPage)
                     pagerState.animateScrollToPage(storyIndex)
             }
 
+            // Auto-advance: every STORY_AUTOADVANCE_MS, advance to the next
+            // story. When on the last story, the auto-advance fires hideStory
+            // (which closes the viewer).
+            LaunchedEffect(key1 = storyIndex, stories?.size) {
+                while (true) {
+                    delay(STORY_AUTOADVANCE_MS)
+                    viewModel.moveToNextStory(storyIndex)
+                    break  // Re-launch the loop with the new storyIndex
+                }
+            }
+
+            // Sync storyIndex ← pagerState (user swipe).
+            LaunchedEffect(pagerState) {
+                snapshotFlow { pagerState.currentPage }.collect { page ->
+                    if (page != storyIndex) {
+                        // User swiped — re-sync VM. This also triggers markStoryViewed.
+                        if (page > storyIndex) viewModel.moveToNextStory(page - 1)
+                        else viewModel.moveToPreviousStory(page + 1)
+                    }
+                }
+            }
 
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 4.dp)
-            ) { storyIndex ->
+            ) { pageStoryIndex ->
                 Column(
                     Modifier
                         .fillMaxHeight()
                         .combinedClickable(
-                            onDoubleClick = {
-                                // TODO: Like story
-                            },
-                            onClick = {}
+                            onDoubleClick = { /* TODO: Like story */ },
+                            onClick = { /* swallow taps so the pointerInput below handles them */ }
                         )
                         .pointerInput(stories) {
                             detectTapGestures { offset ->
                                 val centerX = (localConfiguration.screenWidthDp.dp / 2)
                                 val tapPosition = offset.x.toDp()
 
-                                Timber.d("IS tap on the right: ${tapPosition > centerX}")
+                                Timber.d("Tap on ${if (tapPosition > centerX) "right" else "left"}")
                                 if (tapPosition > centerX)
-                                    viewModel.moveToNextStory(storyIndex)
+                                    viewModel.moveToNextStory(pageStoryIndex)
                                 else
-                                    viewModel.moveToPreviousStory(storyIndex)
+                                    viewModel.moveToPreviousStory(pageStoryIndex)
                             }
                         }
                 ) {
                     Glider(
-                        imageUrl = stories?.getOrNull(storyIndex)?.imageUrl,
+                        imageUrl = stories?.getOrNull(pageStoryIndex)?.imageUrl,
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
@@ -143,7 +182,6 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                                 contentDescription = null,
                                 modifier = Modifier.size(150.dp)
                             )
-
                             Text(
                                 text = stringResource(id = R.string.error_occurred),
                                 Modifier.padding(top = 8.dp),
@@ -160,11 +198,15 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                     ) {
                         ViewStoryMessageBar(
                             text = typedMessage,
-                            // Pass `it` (the new text) — not `typedMessage` (the OLD
-                            // value). The previous code made every keystroke overwrite
-                            // the field with the previous value, so the user could not
-                            // type into the story reply bar at all.
                             onTextChange = { viewModel.updateTypedMessage(it) },
+                            onSendClick = {
+                                viewModel.sendReply { success ->
+                                    replyMessage = if (success)
+                                        stringResource(R.string.story_reply_sent)
+                                    else
+                                        stringResource(R.string.story_reply_failed)
+                                }
+                            },
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
@@ -202,15 +244,40 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    IconButton(onClick = {
-                        // TODO: Open story options
-                    }) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = stringResource(R.string.open_story_options),
-                            modifier = Modifier.size(28.dp),
-                            tint = Color.White
-                        )
+                    // 3-dot menu — only the author gets the Delete option.
+                    val isAuthor = authorID == com.google.firebase.auth.ktx.auth.let {
+                        com.google.firebase.ktx.Firebase.auth.uid
+                    }
+                    if (isAuthor) {
+                        Box {
+                            IconButton(onClick = { showOptionsDropdown = true }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = stringResource(R.string.open_story_options),
+                                    modifier = Modifier.size(28.dp),
+                                    tint = Color.White
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showOptionsDropdown,
+                                onDismissRequest = { showOptionsDropdown = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.delete_story)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Delete,
+                                            contentDescription = null,
+                                            tint = Color.Red
+                                        )
+                                    },
+                                    onClick = {
+                                        showOptionsDropdown = false
+                                        showDeleteConfirmation = true
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -225,8 +292,57 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                 CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
             }
         }
+
+        // Delete-story confirmation dialog (only shown when the user taps
+        // Delete story from the dropdown).
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = { Text(stringResource(R.string.confirm_delete_story)) },
+                text = { Text(stringResource(R.string.confirm_delete_story_message)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteConfirmation = false
+                        viewModel.deleteCurrentStory { success ->
+                            replyMessage = if (success) null  // no toast on success
+                            else stringResource(R.string.error_occurred)
+                        }
+                    }) { Text(stringResource(R.string.yes)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
+                        Text(stringResource(R.string.no))
+                    }
+                }
+            )
+        }
+
+        // Reply send result toast (very lightweight — auto-dismiss after 1.5s).
+        replyMessage?.let { msg ->
+            LaunchedEffect(msg) {
+                delay(1500)
+                replyMessage = null
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 100.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = msg,
+                    color = Color.White,
+                    fontSize = 13.sp
+                )
+            }
+        }
     }
 }
+
+
+private const val STORY_AUTOADVANCE_MS = 5000L  // 5 seconds per story
 
 
 @Preview

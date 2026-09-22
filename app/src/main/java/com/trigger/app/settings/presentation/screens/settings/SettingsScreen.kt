@@ -9,6 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,11 @@ fun SettingsScreen(navController: NavController) {
 
 
     var showAreYouSurePopup by remember {
+        mutableStateOf(false)
+    }
+
+    // Separate state for sign-out confirmation (delete account uses AreYouSurePopup).
+    var showSignOutConfirmation by remember {
         mutableStateOf(false)
     }
 
@@ -128,12 +135,10 @@ fun SettingsScreen(navController: NavController) {
                 name = stringResource(R.string.sign_out),
                 modifier = Modifier,
                 onOptionSelected = {
-                    viewModel.signOut()
-                    navController.navigateSafelyAndPopTo(
-                        route = Welcome,
-                        popTo = AllChats,
-                        isInclusive = true
-                    )
+                    // Show confirmation dialog BEFORE signing out. The previous
+                    // implementation called viewModel.signOut() + navigated away
+                    // immediately — accidental tap = silent logout.
+                    showSignOutConfirmation = true
                 }
             )
 
@@ -142,6 +147,31 @@ fun SettingsScreen(navController: NavController) {
                 modifier = Modifier,
                 onOptionSelected = {
                     showAreYouSurePopup = true
+                }
+            )
+        }
+
+        // Sign-out confirmation dialog.
+        if (showSignOutConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showSignOutConfirmation = false },
+                title = { Text(stringResource(R.string.confirm_sign_out)) },
+                text = { Text(stringResource(R.string.confirm_sign_out_message)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showSignOutConfirmation = false
+                        viewModel.signOut()
+                        navController.navigateSafelyAndPopTo(
+                            route = Welcome,
+                            popTo = AllChats,
+                            isInclusive = true
+                        )
+                    }) { Text(stringResource(R.string.yes)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSignOutConfirmation = false }) {
+                        Text(stringResource(R.string.no))
+                    }
                 }
             )
         }

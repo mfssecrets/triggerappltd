@@ -260,35 +260,87 @@ service cloud.firestore {
     // ---------------------------------------------------------------------------
     // story/content/{uid}/{storyID}
     //   Fields: storyID, authorUID, imageUrl, storyCaption, timeUploaded,
-    //           totalViewers, viewersIDs
+    //           expiresAt, totalViewers, viewersIDs
     // ---------------------------------------------------------------------------
     match /story/{doc} {
       // Unused grouping doc; lock down.
       allow read, write: if false;
 
       match /content/{authorId}/{storyID} {
-        // Read: anyone signed in.
+        // Read: anyone signed in (stories are visible to other app users while
+        // not expired). The client filters out expired stories locally; the
+        // actual server-side expiry delete is done by the scheduled Cloud
+        // Function.
         allow read: if isSignedIn();
         // Create: only the author.
         allow create: if isSignedIn()
           && authorId == uid()
           && request.resource.data.authorUID == uid()
-          && request.resource.data.storyID == storyID;
+          && request.resource.data.storyID == storyID
+          && request.resource.data.timeUploaded is int
+          && request.resource.data.expiresAt is int;
+        // Update: only the author. Used by the watchStory() transaction to
+        // bump totalViewers + arrayUnion the viewer's uid onto viewersIDs.
+        allow update: if isSignedIn()
+          && authorId == uid()
+          && request.resource.data.authorUID == resource.data.authorUID;
         // Delete: only the author.
         allow delete: if isSignedIn()
           && authorId == uid()
           && resource.data.authorUID == uid();
-        // Update: only the author (e.g. increment viewers when watchStory
-        // is implemented).
-        allow update: if isSignedIn()
-          && authorId == uid()
-          && resource.data.authorUID == uid();
       }
 
-      // viewers subcollection — currently unused (watchStory is TODO).
-      // Locked down for now; loosen when watchStory ships.
-      match /viewers/{authorId}/{viewerID} {
-        allow read, write: if false;
+      // viewers subcollection — `story/viewers/{authorId}/{storyID}/{viewerUID}`.
+      // One doc per viewer; creating the doc is idempotent.
+      //   Author can read all viewers (to show "who viewed your story").
+      //   Signed-in users can write their own viewer doc — but only if they
+      //   are NOT the author (you can't view your own story).
+      match /viewers/{authorId} {
+        // Collection-level: deny. Per-doc rules below grant.
+        allow read: if false;
+        allow write: if false;
+
+        match /{storyID} {
+          allow read:  if isSignedIn() && authorId == uid();
+          allow write: if false;  // only the inner per-viewer docs are writable
+
+          match /{viewerUID} {
+            // The story author can read every viewer doc in their own story.
+            allow read:   if isSignedIn() && authorId == uid();
+            // Any signed-in user (except the author) can create or update
+            // their OWN viewer doc. The `request.resource.data.viewerID == uid()`
+            // constraint prevents spoofing.
+            allow create, update: if isSignedIn()
+              && viewerUID == uid()
+              && authorId != uid()
+              && request.resource.data.viewerID == uid();
+            // Author can delete (e.g., when deleting the whole story).
+            allow delete: if isSignedIn() && authorId == uid();
+          }
+        }
+      }
+
+      // replies subcollection — `story/replies/{authorId}/{storyID}/{replyID}`.
+      // Author can read all replies; any signed-in non-author user can reply.
+      match /replies/{authorId} {
+        allow read:  if false;
+        allow write: if false;
+
+        match /{storyID} {
+          allow read:  if isSignedIn() && authorId == uid();
+          allow write: if false;
+
+          match /{replyID} {
+            allow read:   if isSignedIn() && authorId == uid();
+            allow create: if isSignedIn()
+              && request.resource.data.senderID == uid()
+              && authorId != uid()
+              && request.resource.data.message is string
+              && request.resource.data.message.size() > 0
+              && request.resource.data.sentAt is int;
+            allow update, delete: if false;
+          }
+        }
       }
     }
 

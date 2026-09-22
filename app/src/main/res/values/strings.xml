@@ -73,6 +73,24 @@
     <string name="edit">Edit</string>
     <string name="open_media">Open media</string>
 
+    <!-- Confirmation dialogs — required for every destructive action -->
+    <string name="confirm_sign_out">Sign out?</string>
+    <string name="confirm_sign_out_message">You will need to sign in again to use Trigger App.</string>
+    <string name="confirm_unsend">Unsend this message?</string>
+    <string name="confirm_unsend_message">This message will be deleted for everyone in this chat.</string>
+    <string name="confirm_delete_story">Delete this story?</string>
+    <string name="confirm_delete_story_message">This story will be permanently deleted for everyone. Storage bytes will also be removed.</string>
+    <string name="confirm_yes">Yes</string>
+    <string name="confirm_no">No</string>
+
+    <!-- Story system -->
+    <string name="story_viewers">Viewers</string>
+    <string name="no_story_viewers">No one has viewed this story yet.</string>
+    <string name="delete_story">Delete story</string>
+    <string name="story_expired">Story expired</string>
+    <string name="story_reply_sent">Reply sent</string>
+    <string name="story_reply_failed">Reply failed to send</string>
+
     <string name="image_preview">📷 %1$s</string>
     <string name="audio_preview">🎙️ %1$s</string>
 

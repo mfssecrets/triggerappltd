@@ -1,0 +1,12 @@
+{
+  "name": "trigger-app-functions",
+  "description": "Cloud Functions for the Trigger App — story expiry + viewer-count maintenance + account-deletion cleanup",
+  "version": "1.0.0",
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^5.1.1"
+  },
+  "private": true
+}

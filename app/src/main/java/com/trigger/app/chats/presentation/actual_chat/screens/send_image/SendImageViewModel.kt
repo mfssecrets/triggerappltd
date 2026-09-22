@@ -14,21 +14,17 @@ import com.trigger.app.core.repo.user.UserRepo
 import com.trigger.app.core.repo.user.UserRepoImpl
 import com.trigger.app.stories.repo.StoryRepo
 import com.trigger.app.stories.repo.StoryRepoImpl
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 class SendImageViewModel(
     private val messagesRepo: MessagesRepo = MessagesRepoImpl(ChatRepoImpl()),
     private val userRepo: UserRepo = UserRepoImpl(),
     private val chatRepo: ChatRepo = ChatRepoImpl(),
     private val storyRepo: StoryRepo = StoryRepoImpl(userRepo, chatRepo)
-): ViewModel() {
+) : ViewModel() {
 
     private val _typedMessage = MutableStateFlow(TextFieldValue(""))
     val typedMessage: StateFlow<TextFieldValue> = _typedMessage
@@ -40,40 +36,41 @@ class SendImageViewModel(
         _typedMessage.value = newMessage
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun sendMessage(imageUri: String, sendImageIn: SendImageIn) = viewModelScope.launch {
         if (sendImageState.value is TaskState.LOADING) return@launch
 
         _sendImageState.value = TaskState.LOADING()
 
-//        onSendImage: suspend () -> Unit
-//        onSendImage()
-        /**
-         * Send image in the chat
-         */
-        if (sendImageIn is SendImageIn.Chat) {
-            GlobalScope.launch {
-                sendImageIn.chatId?.let { messagesRepo.sendImageMessage(it, imageUri, typedMessage.value.text) }
-            }
-            delay(1200)
-        }
-        /**
-         * Post the image on the user's story
-         */
-        else {
-            Firebase.auth.uid?.let { userID ->
-                storyRepo.postStory(
+        try {
+            if (sendImageIn is SendImageIn.Chat) {
+                // Send image as a chat message
+                sendImageIn.chatId?.let { chatID ->
+                    messagesRepo.sendImageMessage(chatID, imageUri, typedMessage.value.text)
+                }
+            } else {
+                // Post to the user's story. The new signature is
+                // `postStory(localImageUri, storyCaption): String?` — no
+                // `currentUserID` parameter (the impl reads Firebase.auth.uid
+                // as the single source of truth).
+                val newStoryID = storyRepo.postStory(
                     localImageUri = imageUri.toUri(),
-                    storyCaption = typedMessage.value.text,
-                    currentUserID = userID
+                    storyCaption = typedMessage.value.text
                 )
+                if (newStoryID == null) {
+                    _sendImageState.value = TaskState.DONE.ERROR(
+                        com.trigger.app.R.string.error_occurred
+                    )
+                    return@launch
+                }
             }
+            _sendImageState.value = TaskState.DONE.SUCCESS
+        } catch (e: Exception) {
+            Timber.e(e, "sendMessage: failed")
+            _sendImageState.value = TaskState.DONE.ERROR(
+                com.trigger.app.R.string.error_occurred
+            )
         }
-
-
-        _sendImageState.value = TaskState.DONE.SUCCESS
     }
-
 
     fun resetSendState() {
         _sendImageState.value = TaskState.NONE

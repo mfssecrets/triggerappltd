@@ -37,7 +37,8 @@ import com.trigger.app.core.presentation.ui.theme.QuickSand
 fun ViewStoryMessageBar(
     text: String,
     onTextChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSendClick: () -> Unit = {}
 ) {
     Row {
         Surface(
@@ -76,10 +77,11 @@ fun ViewStoryMessageBar(
         }
 
         TextButton(
-            onClick = { },
+            onClick = onSendClick,
             modifier = Modifier
                 .padding(end = 8.dp, start = 4.dp)
-                .align(Alignment.CenterVertically)
+                .align(Alignment.CenterVertically),
+            enabled = text.isNotEmpty()
         ) {
             Text(
                 text = stringResource(R.string.send),

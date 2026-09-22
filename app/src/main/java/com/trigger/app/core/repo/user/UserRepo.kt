@@ -24,32 +24,13 @@ interface UserRepo {
 
     suspend fun getUserFromUID(uid: String): User?
 
-    /**
-     * Full account-deletion pipeline. Callers MUST pass the username so we can
-     * free the `usernames/{username}` reservation (the Firestore rules don't
-     * let us read it back without ownership).
-     *
-     * Order of operations:
-     *   1. Disable all `chat_details` where user is a participant (set isDisabled=true)
-     *   2. Remove the user's own `personalized_chats/FILLER/{uid}/*` docs
-     *   3. Remove the OTHER participant's `personalized_chats/FILLER/{otherUid}/{chatID}` entries
-     *   4. Remove all `users/{uid}/blockedUsers/*` docs
-     *   5. Remove the `users/{uid}` profile doc
-     *   6. Remove the `public_users/{uid}` projection doc
-     *   7. Remove the `usernames/{username}` reservation
-     *   8. Remove `story_details/{uid}` and all `story/content/{uid}/*`
-     *   9. Remove the Storage `USERS/{uid}/profilePic` object
-     *  10. Call `Firebase.auth.currentUser?.delete()` to remove the Auth user record
-     *
-     * @return true iff every step completed without error (errors are logged via Timber)
-     */
+    // Full account-deletion pipeline. Callers MUST pass the username so we can
+    // free the usernames/{username} reservation (the Firestore rules don't let
+    // us read it back without ownership). See UserRepoImpl for the step list.
     suspend fun deleteUserCompletely(uid: String, username: String): Boolean
 
-    /**
-     * @deprecated use [deleteUserCompletely] instead — this only removes the
-     *   `users/{uid}` doc and does not await the Task. Kept for source-compat
-     *   with callers that haven't been migrated yet.
-     */
+    // Deprecated: only deletes the users/{uid} doc and the Storage pic.
+    // Use [deleteUserCompletely] for the full cleanup pipeline.
     suspend fun deleteUser(uid: String): Boolean
 
 

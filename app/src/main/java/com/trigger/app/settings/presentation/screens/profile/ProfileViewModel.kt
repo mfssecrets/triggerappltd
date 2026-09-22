@@ -8,17 +8,14 @@ import com.trigger.app.core.repo.user_details.UserDetailsRepo
 import com.trigger.app.core.repo.user_details.UserDetailsRepoImpl
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class ProfileViewModel(
     private val userDetailsRepo: UserDetailsRepo = UserDetailsRepoImpl()
-): ViewModel() {
+) : ViewModel() {
 
     val user = userDetailsRepo.getUserProfileFlow
 
@@ -28,27 +25,34 @@ class ProfileViewModel(
     fun updateName(newName: String) = viewModelScope.launch {
         if (newName.isBlank()) return@launch
 
-        userDetailsRepo.updateUserName(Firebase.auth.uid!!, newName)
+        val uid = Firebase.auth.uid ?: return@launch
+        userDetailsRepo.updateUserName(uid, newName)
     }
 
     fun updateBio(newBio: String) = viewModelScope.launch {
         if (newBio.isBlank()) return@launch
 
-        userDetailsRepo.updateUserBio(Firebase.auth.uid!!, newBio)
+        val uid = Firebase.auth.uid ?: return@launch
+        userDetailsRepo.updateUserBio(uid, newBio)
     }
 
-
     /**
-     * Upload the DP on the server. We use a 1.3 second delay to buy time for the upload to finish
+     * Upload the profile pic to Storage, then patch `users/{uid}` + `public_users/{uid}`
+     * + every `chat_details` MiniUser reference with the resulting download URL.
+     *
+     * Uses `viewModelScope.launch` + `collect` (NOT `GlobalScope` + `collectLatest`)
+     * because `collectLatest` cancels the upstream on every byte-progress emission —
+     * which was cancelling the Storage upload mid-flight and the photo never finished
+     * uploading. The previous code also had a magic `delay(1300)` to "buy time for
+     * the upload to finish" — that was a band-aid for the cancellation race; removing
+     * it now that we collect (not collectLatest).
      */
-    @OptIn(DelicateCoroutinesApi::class)
-    fun updateProfilePic(localUri: Uri) = GlobalScope.launch {
-        userDetailsRepo.updateUserProfilePic(Firebase.auth.uid!!, localUri).collectLatest { task ->
-            _taskState.value = task
-        }
+    fun updateProfilePic(localUri: Uri) {
+        val uid = Firebase.auth.uid ?: return
         viewModelScope.launch {
-            delay(1300)
-            _taskState.value = TaskState.DONE.SUCCESS
+            userDetailsRepo.updateUserProfilePic(uid, localUri).collect { task ->
+                _taskState.value = task
+            }
         }
     }
 }

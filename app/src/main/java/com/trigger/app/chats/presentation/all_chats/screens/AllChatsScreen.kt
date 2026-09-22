@@ -183,8 +183,21 @@ fun AllChatsScreen(
                     modifier = Modifier
                         .weight(1f)
                 ) {
+                    // Loading state — chats haven't been fetched yet (initial value is null).
+                    // Show a spinner instead of a blank screen.
+                    if (chats == null) {
+                        androidx.compose.foundation.layout.Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
                     // The user has NO CHATS
-                    if (chats?.isEmpty() == true) {
+                    else if (chats?.isEmpty() == true) {
                         Column(Modifier.align(Alignment.Center)) {
                             Image(
                                 painter = painterResource(id = R.drawable.start_chat),

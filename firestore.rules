@@ -175,14 +175,17 @@ service cloud.firestore {
         && request.resource.data.secondMiniUser.uid is string
         && request.resource.data.firstMiniUser.uid != request.resource.data.secondMiniUser.uid;
 
-      // Update: only participants. BLOCK identity mutation — neither
-      // firstMiniUser nor secondMiniUser can be rewritten, otherwise a
-      // malicious participant could swap in fake MiniUser maps and impersonate
-      // the other party. isDisabled / unreadMessagesCount / lastMessage*
+      // Update: only participants. BLOCK identity mutation — the `.uid`
+      // subfield of firstMiniUser/secondMiniUser must be preserved (so a
+      // malicious participant can't swap in a fake MiniUser to impersonate
+      // the other party), BUT the name/profilePic inside the MiniUser CAN
+      // be mutated — this is needed so that when a user updates their own
+      // name or profile picture, the change propagates to every chat they
+      // are a participant of. isDisabled / unreadMessagesCount / lastMessage*
       // updates remain allowed.
       allow update: if isChatParticipant(chatID)
-        && request.resource.data.firstMiniUser == resource.data.firstMiniUser
-        && request.resource.data.secondMiniUser == resource.data.secondMiniUser
+        && request.resource.data.firstMiniUser.uid == resource.data.firstMiniUser.uid
+        && request.resource.data.secondMiniUser.uid == resource.data.secondMiniUser.uid
         && request.resource.data.chatID == resource.data.chatID;
 
       // Delete: not allowed through the client (chats are disabled, not deleted).
@@ -298,12 +301,16 @@ service cloud.firestore {
       // Reads are admin-only (handled via Cloud Functions / console).
       allow read: if false;
       // Create: any signed-in user, with reporterID == caller and a non-empty reason.
+      // Note: `createdAt` is a Long epoch millis (current epoch > Int.MAX_VALUE,
+      // so the rule accepts either int or long — Firestore stores it as 64-bit
+      // for large epoch values).
       allow create: if isSignedIn()
         && request.resource.data.reporterID == uid()
         && request.resource.data.reason is string
         && request.resource.data.reason.size() > 0
         && request.resource.data.reportedUserID is string
-        && request.resource.data.createdAt is int;
+        && (request.resource.data.createdAt is int
+            || request.resource.data.createdAt is long);
       // No updates or deletes from the client.
       allow update, delete: if false;
     }

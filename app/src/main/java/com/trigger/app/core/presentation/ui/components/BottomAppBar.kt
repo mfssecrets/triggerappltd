@@ -43,7 +43,6 @@ import com.trigger.app.core.presentation.ui.Stories
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.DarkBlue
 import com.trigger.app.core.presentation.ui.theme.LightGrey
-import com.trigger.app.core.presentation.ui.theme.LocalAppColors
 import com.trigger.app.core.presentation.ui.theme.QuickSand
 
 enum class BottomBars {
@@ -59,8 +58,6 @@ fun AppBottomBar(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    val lighterMainBackground = LocalAppColors.current.lighterMainBackground
-
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -74,8 +71,12 @@ fun AppBottomBar(
                 .clip(RoundedCornerShape(20))
         ) {
             drawRect(DarkBlue)
-
-            drawCircle(lighterMainBackground, radius = 95f, center = this.center.copy(y = -15f))
+            // NOTE: a `drawCircle` call used to live here, drawing a lighter-blue
+            // circle ABOVE the canvas to create a half-moon backdrop for the
+            // center-docked FAB. With the FAB removed (per the 5-tab layout),
+            // that half-circle is now an orphan — a visible "half-round crop"
+            // floating in the bar. Removed entirely; the bar is now a clean
+            // solid DarkBlue rounded rectangle.
         }
 
         Row(

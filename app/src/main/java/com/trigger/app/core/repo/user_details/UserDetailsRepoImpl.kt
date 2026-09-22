@@ -118,7 +118,16 @@ class UserDetailsRepoImpl : UserDetailsRepo {
             false
         }
 
-        updateUserProfileInExistingChats(currentUser, newCurrentUser)
+        // Wrap chat-details propagation in its own try-catch so a rule-denial or
+        // network failure on the chat_details side does NOT cause the whole
+        // updateUserName call to throw out of the viewModelScope.launch in
+        // ProfileViewModel — that would silently kill the coroutine and the
+        // user would see no error message (looks like "save didn't work").
+        try {
+            updateUserProfileInExistingChats(currentUser, newCurrentUser)
+        } catch (e: Exception) {
+            Timber.e(e, "updateUserName: chat propagation failed (non-fatal)")
+        }
 
         return isSuccessful
     }
@@ -149,38 +158,58 @@ class UserDetailsRepoImpl : UserDetailsRepo {
         userID: String,
         newProfilePicLocalUri: Uri
     ): Flow<TaskState> = callbackFlow {
+        // Use Float division (was Long/Long → 0 for small files). Multiply by 100
+        // AFTER the division to get a 0..100 progress value.
         val newProfilePic = getStorageRefForProfilePic(userID).putFile(newProfilePicLocalUri)
             .addOnProgressListener { task ->
-                val progress = ((task.bytesTransferred) / (task.totalByteCount)) * 100
-                Timber.d("progress is $progress")
-
-                trySend(TaskState.LOADING(progress = progress.toInt()))
+                val total = task.totalByteCount
+                val progress = if (total > 0) {
+                    ((task.bytesTransferred.toFloat() / total) * 100).toInt()
+                } else 0
+                trySend(TaskState.LOADING(progress = progress))
             }
             .await()
             .storage.downloadUrl
             .await()
             .toString()
 
-        Timber.d("newProfilePic is $newProfilePic")
-
         val currentUser =
             getUserProfileReference(userID).get().await().toObject(User::class.java)?.toMiniUser()
         val newCurrentUser = currentUser?.copy(profilePic = newProfilePic)
 
-        // Update the main profile in /users/
-        getUserProfileReference(userID)
-            .update(User::profilePic.name, newProfilePic)
+        // Update the main profile in /users/ (await — was fire-and-forget)
+        try {
+            getUserProfileReference(userID)
+                .update(User::profilePic.name, newProfilePic)
+                .await()
+        } catch (e: Exception) {
+            Timber.e(e, "updateUserProfilePic: users/{uid} update failed")
+        }
+
+        // Mirror to public_users projection
+        try {
+            getPublicUserProfileReference(userID)
+                .update("profilePic", newProfilePic)
+                .await()
+        } catch (e: Exception) {
+            Timber.e(e, "updateUserProfilePic: public_users/{uid} update failed")
+        }
 
         // Update the user profile in the chats collection
-        updateUserProfileInExistingChats(currentUser, newCurrentUser)
+        try {
+            updateUserProfileInExistingChats(currentUser, newCurrentUser)
+        } catch (e: Exception) {
+            Timber.e(e, "updateUserProfilePic: chat propagation failed (non-fatal)")
+        }
 
         trySend(TaskState.DONE.SUCCESS)
 
-        awaitClose {
-            trySend(TaskState.DONE.SUCCESS)
-        }
-    }.catch {
-        Timber.e(it)
+        // No spurious SUCCESS on awaitClose — the previous `awaitClose { trySend(SUCCESS) }`
+        // sent a second SUCCESS when the flow was cancelled (e.g., screen exit),
+        // making the consumer think a cancelled upload actually succeeded.
+        awaitClose { /* no-op — flow is cancelled by the consumer */ }
+    }.catch { e ->
+        Timber.e(e, "updateUserProfilePic: flow error")
     }
 
 

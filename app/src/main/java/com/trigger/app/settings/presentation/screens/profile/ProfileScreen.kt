@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -99,38 +100,50 @@ fun ProfileScreen(
                 }
             ) {
 
-                Box(
-                    Modifier
-                        .padding(vertical = 30.dp)
-                        .align(Alignment.CenterHorizontally)
-                ) {
-                    UserIcon(
-                        profilePic = user?.profilePic,
-                        iconSize = 180.dp,
-                        progressBarSize = 36.dp,
-                        progressBarThickness = 3.dp,
-                        borderIfUsingDefaultPic = 2.dp,
-                        onClick = {
-                            previewProfilePicFullScreen = user?.profilePic ?: ""
-                        }
-                    )
+                // Loading state — show a spinner while the user profile snapshot
+                // listener hasn't emitted yet (initial `user == null`).
+                if (user == null) {
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .padding(vertical = 30.dp)
+                            .align(Alignment.CenterHorizontally)
+                    ) {
+                        UserIcon(
+                            profilePic = user?.profilePic,
+                            iconSize = 180.dp,
+                            progressBarSize = 36.dp,
+                            progressBarThickness = 3.dp,
+                            borderIfUsingDefaultPic = 2.dp,
+                            onClick = {
+                                previewProfilePicFullScreen = user?.profilePic ?: ""
+                            }
+                        )
 
-                    Image(
-                        painter = painterResource(id = R.drawable.camera),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable { showProfilePicPopup = true }
-                            .background(DarkBlue)
-                            .padding(9.dp)
-                            .align(Alignment.BottomEnd),
-                        colorFilter = ColorFilter.tint(Color.White)
-                    )
-                }
+                        Image(
+                            painter = painterResource(id = R.drawable.camera),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .clickable { showProfilePicPopup = true }
+                                .background(DarkBlue)
+                                .padding(9.dp)
+                                .align(Alignment.BottomEnd),
+                            colorFilter = ColorFilter.tint(Color.White)
+                        )
+                    }  // end of Box
 
-
-                Column(Modifier.padding(horizontal = 12.dp)) {
+                    Column(Modifier.padding(horizontal = 12.dp)) {
                     ProfileItem(
                         modifier = Modifier.padding(vertical = 12.dp),
                         startIcon = Icons.Outlined.Person,
@@ -166,7 +179,8 @@ fun ProfileScreen(
                         textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
                         onEditClicked = null
                     )
-                }
+                }  // end of Column
+                }  // end of else (user != null)
             }
 
 

@@ -103,9 +103,41 @@ fun StoriesScreen(navController: NavController, coroutineScope: CoroutineScope) 
                         modifier = Modifier.padding(top = 12.dp)
                     )
 
-                    if (storyPreviews != null) {
+                    // Capture in a local val so Kotlin can smart-cast to
+                    // `List<StoryPreview>` (the open/custom getter on the
+                    // StateFlow-collected property prevents smart-casting the
+                    // original `storyPreviews` reference inside the if/else chain).
+                    val previews = storyPreviews
+
+                    if (previews == null) {
+                        // Loading state — show a spinner instead of misleading
+                        // "No active stories" text while the Firestore query is still
+                        // in-flight.
+                        Column(
+                            Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    } else if (previews.isEmpty()) {
+                        // Truly empty — the Firestore query completed and returned 0 stories.
+                        Column(
+                            Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = stringResource(R.string.no_active_stories),
+                                fontFamily = Poppins,
+                                fontSize = 17.sp
+                            )
+                        }
+                    } else {
                         LazyColumn(modifier = Modifier.padding(top = 2.dp)) {
-                            items(storyPreviews!!) { preview ->
+                            items(previews) { preview ->
                                 StoryBar(
                                     authorID = preview.authorID,
                                     authorName = preview.authorName,
@@ -118,18 +150,6 @@ fun StoriesScreen(navController: NavController, coroutineScope: CoroutineScope) 
                                     }
                                 )
                             }
-                        }
-                    } else {
-                        Column(
-                            Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = stringResource(R.string.no_active_stories),
-                                fontFamily = Poppins,
-                                fontSize = 17.sp
-                            )
                         }
                     }
                 }

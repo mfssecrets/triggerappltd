@@ -17,8 +17,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -144,14 +146,45 @@ class MainActivity : ComponentActivity() {
                     return@AppTheme
                 }
 
-                // We have the auth state now — derive start destination without race.
-                LaunchedEffect(key1 = Unit) {
-                    val currentUser = viewModel.fetchCurrentUser()
+                // Capture the initial start destination ONCE, the first time
+                // auth becomes ready. We must NOT make `startDestination` reactive
+                // to `signedIn` — that was the bug. When a new user completed phone
+                // auth mid-session, `isSignedIn` flipped from false → true, the
+                // NavHost recomposed with the new `startDestination = AllChats`,
+                // and the back stack was re-initialised to AllChats — silently
+                // bypassing the entire onboarding flow (CreateProfile → CreateUsername)
+                // and dumping the new user on the dashboard with no profile doc.
+                //
+                // After this point, `signedIn` is only used for the splash gate
+                // and the post-auth profile-check LaunchedEffect below — never
+                // for `startDestination`.
+                val initialStartRoute = remember { mutableStateOf<Any?>(null) }
+                LaunchedEffect(ready) {
+                    if (ready && initialStartRoute.value == null) {
+                        initialStartRoute.value =
+                            if (Firebase.auth.uid != null) AllChats else Welcome
+                    }
+                }
+                val startRoute = initialStartRoute.value
+                if (startRoute == null) {
+                    // First frame after `ready=true` — wait one more frame for
+                    // `initialStartRoute` to be populated by the LaunchedEffect
+                    // above.
+                    Box(Modifier.fillMaxSize())
+                    return@AppTheme
+                }
 
-                    if (currentUser?.uid == null && Firebase.auth.uid != null) {
-                        // User registered but didn't create their profile.
-                        val phone = Firebase.auth.currentUser?.phoneNumber ?: ""
-                        navController.navigateSafely(CreateProfile(phone))
+                // Post-auth profile-completeness check: if the user is signed in
+                // but has no `users/{uid}` doc yet (signed up but didn't finish
+                // onboarding), send them to CreateProfile. This fires only ONCE
+                // per Activity composition.
+                LaunchedEffect(key1 = Unit) {
+                    if (Firebase.auth.uid != null) {
+                        val currentUser = viewModel.fetchCurrentUser()
+                        if (currentUser?.uid == null) {
+                            val phone = Firebase.auth.currentUser?.phoneNumber ?: ""
+                            navController.navigateSafely(CreateProfile(phone))
+                        }
                     }
                 }
 
@@ -171,7 +204,7 @@ class MainActivity : ComponentActivity() {
 
                         NavHost(
                             navController = navController,
-                            startDestination = if (signedIn) AllChats else Welcome
+                            startDestination = startRoute
                         ) {
 
                             composable<Welcome> {

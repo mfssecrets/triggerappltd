@@ -160,7 +160,11 @@ fun ViewStoryScreen(authorID: String, onHideStory: () -> Unit) {
                     ) {
                         ViewStoryMessageBar(
                             text = typedMessage,
-                            onTextChange = { viewModel.updateTypedMessage(typedMessage) },
+                            // Pass `it` (the new text) — not `typedMessage` (the OLD
+                            // value). The previous code made every keystroke overwrite
+                            // the field with the previous value, so the user could not
+                            // type into the story reply bar at all.
+                            onTextChange = { viewModel.updateTypedMessage(it) },
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }

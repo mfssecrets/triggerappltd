@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,8 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -86,6 +88,21 @@ fun AllChatsScreen(
         updateStatusBar(StatusBars(appColors.blueCardColor, false))
     }
 
+    // Permission launcher declared at the top of the composable so the top app bar
+    // can launch it from the new "Start a chat" (+) icon. Previously it was
+    // declared inside the DefaultScreen content lambda and triggered by a FAB
+    // in the bottom bar; the bottom bar no longer has a FAB.
+    val permissionRequestLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted)
+            navController.navigateSafely(SelectContact)
+        else
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(context.getString(R.string.read_contacts_permission))
+            }
+    }
+
 
     DefaultScreen(
         appBar = {
@@ -107,14 +124,30 @@ fun AllChatsScreen(
                     }
                 )
 
-                TintedAppBarIcon(
+                // Top-right action group: Mail (Message Requests) + Add (Start a chat).
+                // The Add icon used to be a center-docked FAB in the bottom bar; it has
+                // moved here per the new layout (5 bottom tabs, no FAB).
+                Row(
                     modifier = Modifier.align(Alignment.CenterEnd),
-                    imageVector = Icons.Rounded.Email,
-                    contentDescription = stringResource(R.string.message_requests),
-                    onClick = {
-                        navController.navigateSafely(MessageRequests)
-                    }
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TintedAppBarIcon(
+                        imageVector = Icons.Rounded.Email,
+                        contentDescription = stringResource(R.string.message_requests),
+                        onClick = {
+                            navController.navigateSafely(MessageRequests)
+                        }
+                    )
+
+                    TintedAppBarIcon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(R.string.start_a_chat),
+                        onClick = {
+                            permissionRequestLauncher.launch(Manifest.permission.READ_CONTACTS)
+                        }
+                    )
+                }
 
 
                 Text(
@@ -227,22 +260,10 @@ fun AllChatsScreen(
 //                    }
                 }
 
-                val permissionRequestLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestPermission()
-                ) { isGranted ->
-                    if (isGranted)
-                        navController.navigateSafely(SelectContact)
-                    else
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar(context.getString(R.string.read_contacts_permission))
-                        }
-                }
-
                 AppBottomBar(
                     currentBottomBar = BottomBars.AllChats,
-                    navController = navController,
-                    hasPrimaryAction = true,
-                    onPrimaryAction = { permissionRequestLauncher.launch(Manifest.permission.READ_CONTACTS) })
+                    navController = navController
+                )
             }
         }
     }

@@ -45,6 +45,8 @@ import com.trigger.app.core.presentation.ui.components.DefaultScreen
 import com.trigger.app.core.presentation.ui.components.AppBar
 import com.trigger.app.core.presentation.ui.Settings
 import com.trigger.app.core.presentation.ui.navigateSafely
+import com.trigger.app.core.presentation.ui.components.AppBottomBar
+import com.trigger.app.core.presentation.ui.components.BottomBars
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.theme.AppTheme
@@ -205,6 +207,14 @@ fun ProfileScreen(
             if (showProfilePicPopup)
                 pickImageLauncher.launch(DefaultCropContract)
         }
+
+        // Profile is now a bottom-nav tab — render the bottom bar so users can
+        // navigate away without going through Settings.
+        AppBottomBar(
+            currentBottomBar = BottomBars.Profile,
+            navController = navController,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 

@@ -158,11 +158,11 @@ fun StoriesScreen(navController: NavController, coroutineScope: CoroutineScope) 
 
             AppBottomBar(
                 currentBottomBar = BottomBars.Stories,
-                navController = navController,
-                hasPrimaryAction = true,
-                onPrimaryAction = {
-                    viewModel.updateOpenMediaPicker(shouldOpen = true)
-                }
+                navController = navController
+                // The "Add story" action used to be a center-docked FAB here; the
+                // StoryBar at the top of the screen already handles tap-to-add via
+                // `createOrViewStory` (see line 91), so removing the FAB does not
+                // regress story creation.
             )
         }
 

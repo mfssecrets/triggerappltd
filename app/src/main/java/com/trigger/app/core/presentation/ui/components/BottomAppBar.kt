@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -38,26 +38,26 @@ import com.trigger.app.R
 import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.Calls
 import com.trigger.app.core.presentation.ui.Groups
+import com.trigger.app.core.presentation.ui.MyProfile
 import com.trigger.app.core.presentation.ui.Stories
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.DarkBlue
-import com.trigger.app.core.presentation.ui.theme.DarkerBlue
 import com.trigger.app.core.presentation.ui.theme.LightGrey
 import com.trigger.app.core.presentation.ui.theme.LocalAppColors
 import com.trigger.app.core.presentation.ui.theme.QuickSand
 
 enum class BottomBars {
-    AllChats, Groups, Stories, Calls
+    AllChats, Groups, Stories, Calls, Profile
 }
 
-// Messages, Groups, Start Chat, Stories, Calls
+// 5 tabs: Chats | Groups | Stories | Calls | Profile
+// The "Start a chat" (+) action used to live here as a center-docked FAB; it has
+// moved to the top-right of the AllChats screen's app bar.
 @Composable
 fun AppBottomBar(
     currentBottomBar: BottomBars,
     navController: NavController,
-    modifier: Modifier = Modifier,
-    hasPrimaryAction: Boolean = false,
-    onPrimaryAction: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
     val lighterMainBackground = LocalAppColors.current.lighterMainBackground
 
@@ -70,7 +70,6 @@ fun AppBottomBar(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 40.dp)
                 .height(68.dp)
                 .clip(RoundedCornerShape(20))
         ) {
@@ -79,29 +78,9 @@ fun AppBottomBar(
             drawCircle(lighterMainBackground, radius = 95f, center = this.center.copy(y = -15f))
         }
 
-        if (hasPrimaryAction) {
-            // Show this in the messages screen ONLY
-            FloatingActionButton(
-                onClick = onPrimaryAction,
-                shape = CircleShape,
-                containerColor = DarkerBlue,
-                contentColor = Color.White,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .size(62.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = stringResource(id = R.string.start_a_chat),
-                    Modifier.size(34.dp)
-                )
-            }
-        }
-
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 48.dp)
                 .padding(horizontal = 4.dp)
                 .height(60.dp)
                 .align(Alignment.TopCenter),
@@ -130,8 +109,6 @@ fun AppBottomBar(
                 }
             )
 
-            Spacer(modifier = Modifier.width(50.dp))
-
             BottomAppBarItem(
                 isActive = BottomBars.Stories.isCurrentScreen(currentBottomBar),
                 icon = painterResource(id = R.drawable.stories),
@@ -153,6 +130,17 @@ fun AppBottomBar(
                         navController.navigate(Calls)
                 }
             )
+
+            BottomAppBarItem(
+                isActive = BottomBars.Profile.isCurrentScreen(currentBottomBar),
+                imageVector = Icons.Rounded.Person,
+                content = stringResource(R.string.profile),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    if (!BottomBars.Profile.isCurrentScreen(currentBottomBar))
+                        navController.navigate(MyProfile)
+                }
+            )
         }
     }
 }
@@ -165,6 +153,39 @@ fun BottomAppBarItem(
     content: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
+) = BottomAppBarItemImpl(
+    isActive = isActive,
+    iconPainter = icon,
+    imageVector = null,
+    content = content,
+    onClick = onClick,
+    modifier = modifier
+)
+
+@Composable
+fun BottomAppBarItem(
+    isActive: Boolean,
+    imageVector: ImageVector,
+    content: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) = BottomAppBarItemImpl(
+    isActive = isActive,
+    iconPainter = rememberVectorPainter(imageVector),
+    imageVector = null,
+    content = content,
+    onClick = onClick,
+    modifier = modifier
+)
+
+@Composable
+private fun BottomAppBarItemImpl(
+    isActive: Boolean,
+    iconPainter: Painter,
+    imageVector: ImageVector?,
+    content: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -172,9 +193,9 @@ fun BottomAppBarItem(
             .clickable { onClick() }
     ) {
         Icon(
-            painter = icon,
+            painter = iconPainter,
             contentDescription = null,
-            modifier = Modifier.size(22.dp), //(if (isActive) 32.dp else 28.dp),
+            modifier = Modifier.size(22.dp),
             tint = if (isActive) Color.White else LightGrey
         )
 

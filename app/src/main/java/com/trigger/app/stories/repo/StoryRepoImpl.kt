@@ -11,6 +11,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.toObject
 import com.google.firebase.firestore.toObjects
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.ktx.storage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
@@ -32,9 +33,17 @@ class StoryRepoImpl(
         val storyID = UUID.randomUUID().toString()
         val currentUser = Firebase.auth.uid?.let { userRepo.getUserFromUID(it) }
 
+        // Explicit StorageMetadata with contentType="image/jpeg" — the PhotoPicker
+        // returns a content URI whose MIME type is usually image/* already, but
+        // pass it explicitly anyway to defend against any URI where the type
+        // isn't detected (would otherwise fail storage.rules
+        // `request.resource.contentType.matches('image/.*')`).
+        val metadata = StorageMetadata.Builder()
+            .setContentType("image/jpeg")
+            .build()
 
         val imageUrl = Firebase.storage.getReference("${StoryRepo.STORY}/$currentUserID/$storyID")
-            .putFile(localImageUri)
+            .putFile(localImageUri, metadata)
             .await().storage.downloadUrl
             .await().toString()
 

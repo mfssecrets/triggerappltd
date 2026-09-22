@@ -19,6 +19,8 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.StorageMetadata
+import com.google.firebase.storage.ktx.storage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -158,9 +160,18 @@ class UserDetailsRepoImpl : UserDetailsRepo {
         userID: String,
         newProfilePicLocalUri: Uri
     ): Flow<TaskState> = callbackFlow {
+        // Explicit StorageMetadata with contentType="image/jpeg" — same reason as
+        // in UserRepoImpl.createUser: CanHub cropper's cache URI may not have a
+        // detectable image MIME type, which would fail the storage.rules
+        // `request.resource.contentType.matches('image/.*')` check.
+        val metadata = StorageMetadata.Builder()
+            .setContentType("image/jpeg")
+            .build()
+
         // Use Float division (was Long/Long → 0 for small files). Multiply by 100
         // AFTER the division to get a 0..100 progress value.
-        val newProfilePic = getStorageRefForProfilePic(userID).putFile(newProfilePicLocalUri)
+        val newProfilePic = getStorageRefForProfilePic(userID)
+            .putFile(newProfilePicLocalUri, metadata)
             .addOnProgressListener { task ->
                 val total = task.totalByteCount
                 val progress = if (total > 0) {

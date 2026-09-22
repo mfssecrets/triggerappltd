@@ -6,6 +6,8 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.StorageMetadata
+import com.google.firebase.storage.ktx.storage
 import com.trigger.app.R
 import com.trigger.app.core.domain.TaskState
 import com.trigger.app.core.domain.User
@@ -84,8 +86,18 @@ class UserRepoImpl : UserRepo {
         //          the user is still created — they just have no profile pic.
         if (profilePicLocalUri != null) {
             try {
+                // Explicit StorageMetadata with contentType="image/jpeg" — the CanHub
+                // cropper returns a cache URI whose content type is often detected as
+                // null or application/octet-stream by ContentResolver.getType(uri),
+                // which the storage.rules check `request.resource.contentType.matches('image/.*')`
+                // would then DENY. Setting it explicitly bypasses the content-type
+                // detection and unblocks the upload.
+                val metadata = StorageMetadata.Builder()
+                    .setContentType("image/jpeg")
+                    .build()
+
                 val downloadUrl = getStorageRefForProfilePic(uid)
-                    .putFile(profilePicLocalUri)
+                    .putFile(profilePicLocalUri, metadata)
                     .await()
                     .storage
                     .downloadUrl

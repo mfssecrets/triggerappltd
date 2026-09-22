@@ -198,13 +198,21 @@ fun AllChatsScreen(
                     }
                     // The user has NO CHATS
                     else if (chats?.isEmpty() == true) {
-                        Column(Modifier.align(Alignment.Center)) {
+                        // Truly centered empty state — Column fills the Box and centers
+                        // its children both vertically and horizontally. Previously the
+                        // Column only had `.align(Alignment.Center)` without `fillMaxSize`,
+                        // which biased the icon+text combo slightly upward (icon at ~40%
+                        // from top, text at ~50%) — looked top-heavy.
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Image(
                                 painter = painterResource(id = R.drawable.start_chat),
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(60.dp)
-                                    .align(Alignment.CenterHorizontally),
+                                    .size(60.dp),
                                 colorFilter = ColorFilter.tint(LocalAppColors.current.appThemeTextColor)
                             )
 
@@ -215,8 +223,7 @@ fun AllChatsScreen(
                                 color = MaterialTheme.colorScheme.onBackground.copy(0.85f),
                                 modifier = Modifier
                                     .fillMaxWidth(0.7f)
-                                    .padding(top = 24.dp)
-                                    .align(Alignment.CenterHorizontally),
+                                    .padding(top = 24.dp),
                                 textAlign = TextAlign.Center,
                                 lineHeight = 18.sp
                             )

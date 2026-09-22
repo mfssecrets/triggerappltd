@@ -301,16 +301,15 @@ service cloud.firestore {
       // Reads are admin-only (handled via Cloud Functions / console).
       allow read: if false;
       // Create: any signed-in user, with reporterID == caller and a non-empty reason.
-      // Note: `createdAt` is a Long epoch millis (current epoch > Int.MAX_VALUE,
-      // so the rule accepts either int or long — Firestore stores it as 64-bit
-      // for large epoch values).
+      // `createdAt` is a Long epoch millis. Firestore stores any 64-bit integer
+      // as the same `int` type internally — `is int` matches both Kotlin Int and
+      // Kotlin Long values.
       allow create: if isSignedIn()
         && request.resource.data.reporterID == uid()
         && request.resource.data.reason is string
         && request.resource.data.reason.size() > 0
         && request.resource.data.reportedUserID is string
-        && (request.resource.data.createdAt is int
-            || request.resource.data.createdAt is long);
+        && request.resource.data.createdAt is int;
       // No updates or deletes from the client.
       allow update, delete: if false;
     }

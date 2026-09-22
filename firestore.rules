@@ -337,6 +337,7 @@ service cloud.firestore {
               && authorId != uid()
               && request.resource.data.message is string
               && request.resource.data.message.size() > 0
+              && request.resource.data.message.size() <= 500  // mirrors MAX_REPLY_LENGTH in ViewStoryMessageBar.kt
               && request.resource.data.sentAt is int;
             allow update, delete: if false;
           }

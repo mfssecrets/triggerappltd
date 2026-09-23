@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 import java.io.File
+import java.util.Date
 import java.util.UUID
 
 // =====================================================================
@@ -39,7 +40,8 @@ fun Message.toEntity(chatId: String) = MessageEntity(
     messageType = messageType,
     timeSent = timeSent,
     messageStatus = messageStatus.name,
-    wasEdited = wasEdited
+    wasEdited = wasEdited,
+    serverTime = serverTime?.time  // Date → Long (milliseconds)
 )
 
 fun MessageEntity.toMessage() = Message(
@@ -48,7 +50,8 @@ fun MessageEntity.toMessage() = Message(
     messageType = messageType,
     timeSent = timeSent,
     messageStatus = try { MessageStatus.valueOf(messageStatus) } catch (_: Exception) { MessageStatus.NOT_SENT },
-    wasEdited = wasEdited
+    wasEdited = wasEdited,
+    serverTime = serverTime?.let { Date(it) }  // Long → Date
 )
 
 fun Chat.toEntity() = ChatEntity(

@@ -216,12 +216,16 @@ service cloud.firestore {
       // Create: only participants, and the sender must be the caller.
       // FIX #3 (conflict resolution): timeSent must not be > 1 min in the future
       // (prevents spoofed future timestamps that would win last-write-wins).
+      // serverTime must be null or absent (the @ServerTimestamp annotation sends
+      // a sentinel that appears as null in rules; a malicious client that tries
+      // to set serverTime to a specific value would have non-null → DENIED).
       allow create: if isChatParticipant(chatID)
         && request.resource.data.senderID == uid()
         && request.resource.data.messageID == messageID
         && request.resource.data.timeSent is int
         && request.resource.data.messageStatus is string
-        && request.resource.data.timeSent <= request.time.toMillis() + 60000;
+        && request.resource.data.timeSent <= request.time.toMillis() + 60000
+        && (request.resource.data.serverTime == null || !("serverTime" in request.resource.data));
 
       // Update: only participants. BLOCK senderID mutation — otherwise the
       // FIX #8: Sender-only edit enforcement. The sender can update any field
@@ -229,9 +233,12 @@ service cloud.firestore {
       // update messageStatus (mark RECEIVED/OPENED) — all other fields must
       // remain unchanged. This prevents a malicious receiver from editing
       // the sender's message content.
+      // FIX #3 (conflict resolution): serverTime is IMMUTABLE on update —
+      // prevents overwriting the server-set timestamp with a spoofed value.
       allow update: if isChatParticipant(chatID)
         && request.resource.data.senderID == resource.data.senderID
         && request.resource.data.messageID == resource.data.messageID
+        && request.resource.data.serverTime == resource.data.serverTime
         && (
           // Sender can update any field
           resource.data.senderID == uid()

@@ -18,7 +18,10 @@ data class MessageEntity(
     val messageType: Map<String, Any>,
     val timeSent: Long,
     val messageStatus: String,
-    val wasEdited: Boolean = false
+    val wasEdited: Boolean = false,
+    // Server-set timestamp for conflict resolution (lastWriteWins).
+    // Null for pending offline writes (not yet processed by server).
+    val serverTime: Long? = null
 )
 
 @Entity(tableName = "chats", indices = [Index("chatId"), Index("timeOfLastMessage")])

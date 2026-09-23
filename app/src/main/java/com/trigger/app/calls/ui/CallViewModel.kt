@@ -1,6 +1,7 @@
 package com.trigger.app.calls.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ListenerRegistration
@@ -11,6 +12,8 @@ import com.trigger.app.calls.domain.Call
 import com.trigger.app.calls.domain.CallStatus
 import com.trigger.app.calls.domain.CallType
 import com.trigger.app.calls.repo.CallsRepo
+import com.trigger.app.calls.webrtc.CallAudioManager
+import com.trigger.app.calls.webrtc.WebRtcCallSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,25 +26,23 @@ import timber.log.Timber
  *   - IncomingCallScreen: callee deciding to accept/decline
  *   - InCallScreen: both sides in the active call
  *
- * The state machine is stored in Firestore `calls/{callID}.status`. Both
- * sides listen to the same doc via a snapshot listener → state transitions
- * are propagated in real time.
+ * REAL WebRTC integration (no longer fake):
+ *   - On ANSWERED: creates WebRtcCallSession + initialises audio track.
+ *     Both sides do SDP offer/answer exchange + ICE candidate exchange
+ *     via Firestore signaling docs under calls/{callID}/signaling.
+ *   - On Hangup: closes PeerConnection + frees audio resources + writes
+ *     COMPLETED + duration to calls/{callID}.
  *
- * NOTE: This VM is a "fake call" implementation — it manages the call
- * state machine and writes call records, but it does NOT do real WebRTC
- * audio/video. Both sides will see "Call in progress" UI but no audio.
- * Real WebRTC integration is a separate phase.
- *
- * Lifecycle hooks for the (future) WebRTC integration:
- *   - onEnterActive(): set up PeerConnection, exchange SDP offer/answer
- *     via Firestore signaling docs, start audio track.
- *   - onHangup(): close PeerConnection, free audio resources.
+ * AudioManager (CallAudioManager):
+ *   - MODE_IN_COMMUNICATION is set on call start → routes audio to earpiece.
+ *   - Speaker toggle flips isSpeakerphoneOn.
+ *   - Mic mute flips the local audio track's setEnabled flag.
  */
 class CallViewModel(
+    application: Application,
     private val callsRepo: CallsRepo
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
-    /** Per-call UI state. Null when no call is in progress. */
     data class CallUiState(
         val callID: String,
         val callType: CallType,
@@ -54,7 +55,9 @@ class CallViewModel(
         val durationMillis: Long? = null,
         val isMicrophoneMuted: Boolean = false,
         val isSpeakerOn: Boolean = false,
-        val isVideoEnabled: Boolean = false
+        val isVideoEnabled: Boolean = false,
+        /** WebRTC peer connection state — null when no session has been created. */
+        val isWebRtcConnected: Boolean = false
     )
 
     private val _state = MutableStateFlow<CallUiState?>(null)
@@ -62,6 +65,10 @@ class CallViewModel(
 
     private var snapshotListener: ListenerRegistration? = null
     private var timeoutJob: kotlinx.coroutines.Job? = null
+
+    // REAL WebRTC session — replaces the fake-call placeholders.
+    private var webRtcSession: WebRtcCallSession? = null
+    private var audioManager: CallAudioManager? = null
 
     /**
      * Caller-side entry: caller tapped "Call" button on ChatDetailsScreen.
@@ -140,29 +147,41 @@ class CallViewModel(
             )
             timeoutJob?.cancel()
             timeoutJob = null
+            // Tear down WebRTC + AudioManager synchronously — needs to
+            // happen NOW so the audio stops immediately when the user
+            // hangs up, not on the next Firestore emission.
+            teardownWebRtc()
         }
     }
 
     fun toggleMicrophone() {
-        _state.value = _state.value?.copy(isMicrophoneMuted = !_state.value!!.isMicrophoneMuted)
-        // TODO: WebRTC — actually mute the local audio track
+        val current = _state.value ?: return
+        val newMuted = !current.isMicrophoneMuted
+        // REAL: tell the local audio track to disable + mute AudioManager.
+        webRtcSession?.setMicrophoneEnabled(!newMuted)
+        audioManager?.setMicrophoneMuted(newMuted)
+        _state.value = current.copy(isMicrophoneMuted = newMuted)
     }
 
     fun toggleSpeaker() {
-        _state.value = _state.value?.copy(isSpeakerOn = !_state.value!!.isSpeakerOn)
-        // TODO: WebRTC — route audio to earpiece / speakerphone
+        val current = _state.value ?: return
+        val newOn = !current.isSpeakerOn
+        // REAL: route audio to earpiece vs speaker via AudioManager.
+        audioManager?.setSpeakerOn(newOn)
+        _state.value = current.copy(isSpeakerOn = newOn)
     }
 
     fun toggleVideo() {
         // Only relevant for VIDEO calls.
         if (_state.value?.callType != CallType.VIDEO) return
         _state.value = _state.value?.copy(isVideoEnabled = !_state.value!!.isVideoEnabled)
-        // TODO: WebRTC — start/stop local video capture
+        // TODO Phase 2: real WebRTC video track enable/disable.
     }
 
     /**
      * Snapshot listener on `calls/{callID}`. Updates _state on every change.
-     * Cleans up on null (call doc deleted) or COMPLETED/DECLINED/MISSED.
+     * Sets up the WebRTC session when status flips to ANSWERED.
+     * Tears down on COMPLETED/DECLINED/MISSED/FAILED.
      */
     private fun startListening(
         callID: String,
@@ -170,7 +189,6 @@ class CallViewModel(
         callType: CallType,
         isCaller: Boolean
     ) {
-        // Tear down any previous listener (VM can be reused).
         snapshotListener?.remove()
 
         snapshotListener = Firebase.firestore
@@ -182,10 +200,10 @@ class CallViewModel(
                     return@addSnapshotListener
                 }
                 if (snapshot == null || !snapshot.exists()) {
-                    // Call doc was deleted — clean up.
                     _state.value = null
                     snapshotListener?.remove()
                     snapshotListener = null
+                    teardownWebRtc()
                     return@addSnapshotListener
                 }
 
@@ -196,7 +214,6 @@ class CallViewModel(
                     return@addSnapshotListener
                 }
 
-                // Preserve the user's mute/speaker/video toggles across state updates.
                 val prev = _state.value
                 _state.value = CallUiState(
                     callID = call.callID,
@@ -210,8 +227,19 @@ class CallViewModel(
                     durationMillis = call.durationMillis,
                     isMicrophoneMuted = prev?.isMicrophoneMuted ?: false,
                     isSpeakerOn = prev?.isSpeakerOn ?: false,
-                    isVideoEnabled = prev?.isVideoEnabled ?: (callType == CallType.VIDEO)
+                    isVideoEnabled = prev?.isVideoEnabled ?: (callType == CallType.VIDEO),
+                    isWebRtcConnected = prev?.isWebRtcConnected ?: false
                 )
+
+                // Trigger WebRTC setup when status flips to ANSWERED.
+                if (call.status == CallStatus.ANSWERED && webRtcSession == null) {
+                    setupWebRtc(
+                        callID = callID,
+                        isCaller = isCaller,
+                        otherUserID = otherUserID,
+                        callType = callType
+                    )
+                }
 
                 // Terminal states — tear down listener + WebRTC resources.
                 if (call.status == CallStatus.COMPLETED ||
@@ -224,22 +252,63 @@ class CallViewModel(
                     snapshotListener = null
                     timeoutJob?.cancel()
                     timeoutJob = null
-                    // The UI keeps the state for ~2s to show a "Call ended"
-                    // message, then the screen dismisses. Caller's responsibility.
+                    teardownWebRtc()
                 }
             }
     }
 
     /**
+     * Set up the real WebRTC peer connection + audio session. Called when
+     * status flips to ANSWERED. Both sides call this — the caller creates
+     * the SDP offer, the callee listens for it + creates the answer.
+     */
+    private fun setupWebRtc(
+        callID: String,
+        isCaller: Boolean,
+        otherUserID: String,
+        callType: CallType
+    ) {
+        val appContext = getApplication<Application>().applicationContext
+        audioManager = CallAudioManager(appContext).also { it.onCallStart() }
+        webRtcSession = WebRtcCallSession(
+            context = appContext,
+            callID = callID,
+            isCaller = isCaller,
+            otherUserID = otherUserID,
+            onConnected = {
+                Timber.d("WebRtcCallSession: CONNECTED")
+                _state.value = _state.value?.copy(isWebRtcConnected = true)
+            },
+            onDisconnected = {
+                Timber.d("WebRtcCallSession: DISCONNECTED")
+                _state.value = _state.value?.copy(isWebRtcConnected = false)
+            },
+            onRemoteAudioAttached = {
+                Timber.d("WebRtcCallSession: remote audio attached")
+            },
+            onError = { e ->
+                Timber.e(e, "WebRtcCallSession: error — ending call")
+                hangupCall()
+            }
+        ).also {
+            it.init(enableVideo = callType == CallType.VIDEO)
+        }
+    }
+
+    private fun teardownWebRtc() {
+        try { webRtcSession?.end() } catch (_: Exception) {}
+        webRtcSession = null
+        try { audioManager?.onCallEnd() } catch (_: Exception) {}
+        audioManager = null
+    }
+
+    /**
      * If the callee doesn't answer in 30s, auto-mark the call as MISSED.
-     * The snapshot listener on the callee side then sees the transition
-     * and dismisses IncomingCallScreen.
      */
     private fun scheduleTimeout(callID: String) {
         timeoutJob?.cancel()
         timeoutJob = viewModelScope.launch {
             kotlinx.coroutines.delay(30_000L)
-            // If still INITIATED, mark as MISSED.
             val current = _state.value
             if (current != null && current.status == CallStatus.INITIATED) {
                 callsRepo.updateCallStatus(
@@ -257,5 +326,7 @@ class CallViewModel(
         snapshotListener = null
         timeoutJob?.cancel()
         timeoutJob = null
+        teardownWebRtc()
     }
 }
+

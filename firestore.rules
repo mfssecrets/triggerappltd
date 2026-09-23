@@ -428,6 +428,43 @@ service cloud.firestore {
         && request.resource.data.calleeID == resource.data.calleeID;
 
       allow delete: if false;  // calls are append-only history
+
+      // -----------------------------------------------------------------------
+      // WebRTC signaling sub-collection — SDP offer/answer + ICE candidates.
+      // Both caller + callee can read + write (they need to exchange SDP +
+      // ICE during the call). Documents auto-expire via the cloud function
+      // onCallEnd cleanup OR by the WebRtcCallSession.end() method.
+      // -----------------------------------------------------------------------
+      match /signaling/{docID} {
+        allow read: if isSignedIn()
+          && (get(/databases/$(database)/documents/calls/$(callID)).data.callerID == uid()
+              || get(/databases/$(database)/documents/calls/$(callID)).data.calleeID == uid());
+
+        // Offer + answer + candidates are all written by the caller / callee.
+        // Each doc has a senderID field — the writer must match it.
+        allow create: if isSignedIn()
+          && request.resource.data.senderID == uid()
+          && (get(/databases/$(database)/documents/calls/$(callID)).data.callerID == uid()
+              || get(/databases/$(database)/documents/calls/$(callID)).data.calleeID == uid());
+
+        allow update, delete: if isSignedIn()
+          && resource.data.senderID == uid();
+      }
+
+      // Sub-sub-collection for per-user ICE candidates:
+      //   calls/{callID}/signaling/candidates/{uid}/items/{candidateID}
+      match /signaling/candidates/{participantUID}/items/{candidateID} {
+        allow read: if isSignedIn()
+          && (get(/databases/$(database)/documents/calls/$(callID)).data.callerID == uid()
+              || get(/databases/$(database)/documents/calls/$(callID)).data.calleeID == uid());
+
+        allow create: if isSignedIn()
+          && participantUID == uid()
+          && (get(/databases/$(database)/documents/calls/$(callID)).data.callerID == uid()
+              || get(/databases/$(database)/documents/calls/$(callID)).data.calleeID == uid());
+
+        allow update, delete: if isSignedIn() && participantUID == uid();
+      }
     }
 
     // ---------------------------------------------------------------------------

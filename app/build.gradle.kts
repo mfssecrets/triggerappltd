@@ -124,6 +124,10 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.functions)
 
+    // WebRTC — used by the Calls feature for real-time audio/video.
+    // Includes prebuilt native binaries for arm64-v8a / armeabi-v7a / x86 / x86_64.
+    implementation(libs.stream.webrtc)
+
     // DI using Koin
     implementation(platform(libs.koin.bom))
     implementation(libs.koin.core)

@@ -27,8 +27,9 @@ val viewModelModule = module {
     // Notifications feed VM — listens to chat_details + story replies + missed calls.
     viewModel { NotificationsViewModel(get(), get(), get()) }
 
-    // Call VM — manages the call state machine across OutgoingCall /
-    // IncomingCall / InCall screens. Single VM shared across the three
-    // screens (same callID → same VM scope).
-    viewModel { CallViewModel(get()) }
+    // Call VM — manages the call state machine + WebRTC peer connection
+    // across OutgoingCall / IncomingCall / InCall screens.
+    // androidContext() provides the Application context (needed for
+    // PeerConnectionFactory + AudioManager).
+    viewModel { CallViewModel(get(), get()) }
 }

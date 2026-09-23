@@ -13,7 +13,7 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(messages: List<MessageEntity>)
 
-    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timeSent DESC LIMIT 50")
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timeSent DESC")
     fun getMessagesForChat(chatId: String): Flow<List<MessageEntity>>
 
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timeSent DESC LIMIT 50")

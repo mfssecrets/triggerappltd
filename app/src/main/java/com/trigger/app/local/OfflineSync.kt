@@ -1,7 +1,6 @@
 package com.trigger.app.local
 
 import android.content.Context
-import com.trigger.app.chats.domain.Chat
 import com.trigger.app.chats.domain.Message
 import com.trigger.app.chats.domain.MessageStatus
 import com.trigger.app.chats.repo.chats.ChatRepo
@@ -10,6 +9,12 @@ import com.trigger.app.core.domain.MiniUser
 import com.trigger.app.core.domain.User
 import com.trigger.app.core.domain.UserStatus
 import com.trigger.app.core.repo.user_details.UserDetailsRepo
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.Filter
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.toObjects
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.ktx.storage
 import kotlinx.coroutines.CoroutineScope
@@ -106,6 +111,11 @@ class MessageSyncRepository(
     private val messagesRepo: MessagesRepo,
     private val messageDao: MessageDao
 ) {
+    // Cursor pagination state — per chat.
+    // Keyed by chatID: the oldest timeSent in the current page (Long).
+    private val paginationCursors = mutableMapOf<String, Long>()
+    private val loadingOlder = mutableSetOf<String>()
+    private val reachedBeginning = mutableSetOf<String>()
     /**
      * Returns a Flow that:
      *   1. Immediately emits cached messages from Room (offline-ready)
@@ -122,6 +132,14 @@ class MessageSyncRepository(
                 messagesRepo.getMessagesFromChatID(chatID).collect { messages ->
                     // Upsert all messages to Room.
                     messageDao.upsertAll(messages.map { it.toEntity(chatID) })
+
+                    // Initialize cursor on FIRST emission only — the oldest
+                    // message in the latest 50 (last in DESCENDING order).
+                    // Subsequent emissions (new messages) don't update the
+                    // cursor, so scroll-up pagination isn't disturbed.
+                    if (chatID !in paginationCursors && messages.isNotEmpty()) {
+                        paginationCursors[chatID] = messages.last().timeSent
+                    }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "MessageSyncRepository: Firestore sync failed for chatID=$chatID (non-fatal — Room cache still serves)")
@@ -166,7 +184,7 @@ class MessageSyncRepository(
     ): String? {
         val messageID = java.util.UUID.randomUUID().toString()
         val message = com.trigger.app.chats.domain.Message(
-            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            senderID = Firebase.auth.uid ?: "",
             messageID = messageID,
             messageType = messageType.toFirebaseMap(),
             timeSent = System.currentTimeMillis(),
@@ -209,7 +227,7 @@ class MessageSyncRepository(
         val imageType = com.trigger.app.chats.domain.MessageType.Image(messageText ?: "", imageUri)
         val messageID = java.util.UUID.randomUUID().toString()
         val message = com.trigger.app.chats.domain.Message(
-            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            senderID = Firebase.auth.uid ?: "",
             messageID = messageID,
             messageType = imageType.toFirebaseMap(),
             timeSent = System.currentTimeMillis(),
@@ -239,7 +257,7 @@ class MessageSyncRepository(
         val audioType = com.trigger.app.chats.domain.MessageType.Audio(duration, "")
         val messageID = java.util.UUID.randomUUID().toString()
         val message = com.trigger.app.chats.domain.Message(
-            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            senderID = Firebase.auth.uid ?: "",
             messageID = messageID,
             messageType = audioType.toFirebaseMap(),
             timeSent = System.currentTimeMillis(),
@@ -293,6 +311,64 @@ class MessageSyncRepository(
         } catch (e: Exception) {
             Timber.e(e, "retryPendingMessages: failed for chat $chatID")
         }
+    }
+
+    // ================================================================
+    // CURSOR PAGINATION — load older messages on scroll-up
+    // ================================================================
+
+    /**
+     * Load the next page of 50 OLDER messages from Firestore using the cursor
+     * (the oldest timeSent in the current page). Upserts to Room — the Room
+     * flow re-emits and the UI shows the older messages automatically.
+     *
+     * Safe to call multiple times — guarded by loadingOlder + reachedBeginning.
+     * New sent messages don't disturb the cursor (cursor is only updated by
+     * this method, not by the live snapshot listener).
+     */
+    suspend fun loadOlderMessages(chatID: String) {
+        if (loadingOlder.contains(chatID)) return
+        if (reachedBeginning.contains(chatID)) return
+
+        val cursor = paginationCursors[chatID] ?: return
+        loadingOlder.add(chatID)
+
+        try {
+            val snapshot = ChatRepo.getMessagesCollectionRef(chatID)
+                .where(
+                    Filter.or(
+                        Filter.notEqualTo(Message::messageStatus.name, MessageStatus.NOT_SENT),
+                        Filter.equalTo(Message::senderID.name, Firebase.auth.uid ?: "")
+                    )
+                )
+                .orderBy(Message::timeSent.name, Query.Direction.DESCENDING)
+                .startAfter(cursor)
+                .limit(50)
+                .get()
+                .await()
+
+            if (snapshot.isEmpty) {
+                reachedBeginning.add(chatID)
+                Timber.d("loadOlderMessages: reached beginning for chat $chatID")
+            } else {
+                val messages = snapshot.toObjects(Message::class.java)
+                messageDao.upsertAll(messages.map { it.toEntity(chatID) })
+                paginationCursors[chatID] = messages.last().timeSent
+                Timber.d("loadOlderMessages: loaded ${messages.size} older messages for chat $chatID")
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "loadOlderMessages: failed for chatID=$chatID")
+        } finally {
+            loadingOlder.remove(chatID)
+        }
+    }
+
+    fun hasMoreMessages(chatID: String): Boolean = !reachedBeginning.contains(chatID)
+
+    fun resetPagination(chatID: String) {
+        paginationCursors.remove(chatID)
+        loadingOlder.remove(chatID)
+        reachedBeginning.remove(chatID)
     }
 }
 

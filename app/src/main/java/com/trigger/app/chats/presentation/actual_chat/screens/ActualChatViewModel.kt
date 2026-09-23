@@ -90,6 +90,22 @@ class ActualChatViewModel(
     private val _isEditing = MutableStateFlow<String?>(null)
     val isEditing: StateFlow<String?> = _isEditing
 
+    // Cursor pagination state
+    private val _hasMoreMessages = MutableStateFlow(true)
+    val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages
+    private val _isLoadingOlder = MutableStateFlow(false)
+    val isLoadingOlder: StateFlow<Boolean> = _isLoadingOlder
+
+    fun loadOlderMessages() = viewModelScope.launch {
+        val cid = chatID ?: return@launch
+        if (_isLoadingOlder.value || !_hasMoreMessages.value) return@launch
+
+        _isLoadingOlder.value = true
+        messageSyncRepository?.loadOlderMessages(cid)
+        _hasMoreMessages.value = messageSyncRepository?.hasMoreMessages(cid) ?: true
+        _isLoadingOlder.value = false
+    }
+
     val doesOtherUserAccountExist = MutableStateFlow(true)
 
 

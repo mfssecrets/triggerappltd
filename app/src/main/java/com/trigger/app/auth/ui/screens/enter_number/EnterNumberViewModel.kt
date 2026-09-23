@@ -6,11 +6,11 @@ import com.da_chelimo.compose_ccp.model.PickerUtils
 import com.da_chelimo.compose_countrycodepicker.libs.Country
 import com.trigger.app.R
 import com.trigger.app.core.domain.TaskState
+import com.google.i18n.phonenumbers.PhoneNumberUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import timber.log.Timber
 
@@ -22,11 +22,9 @@ class EnterNumberViewModel : ViewModel() {
     private val _country = MutableStateFlow(PickerUtils.defaultCountry)
     val country: StateFlow<Country> = _country
 
+    // FIX #3: Uses Google libphonenumber for proper E.164 validation.
+    // No more hardcoded COUNTRY_LENGTH map with IN=10, US=10, etc.
     val numberWithCountryCode =
-        // FIX: previously used `number.map { ... country.value ... }` which only
-        // re-emitted when `number` changed — picking a different country without
-        // retyping the digits produced a stale country-code prefix. `combine`
-        // re-emits whenever either side changes.
         combine(number, country) { n, c -> "${c.phoneNoCode}$n".trim() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
@@ -37,9 +35,7 @@ class EnterNumberViewModel : ViewModel() {
     val shouldNavigateToEnterCode: StateFlow<Boolean> = _shouldNavigateToEnterCode
 
     fun updateNumber(newNumber: String) {
-        // Accept only digits, strip anything else (spaces, dashes, parens, etc.)
-        val digits = newNumber.filter { it.isDigit() }
-        _number.value = digits
+        _number.value = newNumber.filter { it.isDigit() }
         verifyNumber()
     }
 
@@ -48,33 +44,30 @@ class EnterNumberViewModel : ViewModel() {
         verifyNumber()
     }
 
-    /**
-     * Validate the typed phone number against the selected country's expected
-     * length. Falls back to the ITU-T E.164 range (7-15 digits) for countries
-     * we don't have an exact length for.
-     */
+    // FIX #3: libphonenumber validation — parse + isValidNumber + E.164 format.
     fun verifyNumber() {
         val digits = number.value
-
-        // Empty input is not yet an error — just no verdict.
         if (digits.isEmpty()) {
             _taskState.value = null
             return
         }
 
-        val expectedLength = expectedPhoneLength(country.value)
+        val phoneUtil = PhoneNumberUtil.getInstance()
+        val fullNumber = "${country.value.phoneNoCode}$digits"
 
-        _taskState.value = when {
-            expectedLength != null && digits.length < expectedLength ->
-                TaskState.DONE.ERROR(R.string.number_too_short)
-            expectedLength != null && digits.length > expectedLength ->
-                TaskState.DONE.ERROR(R.string.number_too_long)
-            // E.164 fallback range (without country code)
-            expectedLength == null && digits.length < MIN_LOCAL_LENGTH ->
-                TaskState.DONE.ERROR(R.string.number_too_short)
-            expectedLength == null && digits.length > MAX_LOCAL_LENGTH ->
-                TaskState.DONE.ERROR(R.string.number_too_long)
-            else -> TaskState.DONE.SUCCESS
+        try {
+            // Parse with the country's ISO code (e.g., "IN", "US", "GB").
+            val parsed = phoneUtil.parse(fullNumber, country.value.code.uppercase())
+
+            if (phoneUtil.isValidNumber(parsed)) {
+                _taskState.value = TaskState.DONE.SUCCESS
+            } else {
+                _taskState.value = TaskState.DONE.ERROR(R.string.number_too_short)
+            }
+        } catch (e: Exception) {
+            // libphonenumber throws NumberParseException for invalid input.
+            Timber.d("verifyNumber: parse failed for '$fullNumber' — ${e.message}")
+            _taskState.value = TaskState.DONE.ERROR(R.string.number_too_short)
         }
     }
 
@@ -88,49 +81,16 @@ class EnterNumberViewModel : ViewModel() {
         _shouldNavigateToEnterCode.value = false
     }
 
-    companion object {
-        // E.164 says the full international number (incl. country code) is max 15 digits.
-        // So without the country code the local part is at most ~13. We allow 7-13 as a
-        // sensible fallback for any country not in the explicit table below.
-        private const val MIN_LOCAL_LENGTH = 7
-        private const val MAX_LOCAL_LENGTH = 13
-
-        /**
-         * Mobile/local number length (excluding country code) for countries the
-         * app commonly serves. Returns null if unknown — caller should fall back
-         * to the E.164 range.
-         *
-         * Sources: ITU-T E.164 national numbering plans.
-         */
-        private val COUNTRY_LENGTH: Map<String, Int> = mapOf(
-            // South Asia
-            "IN" to 10,  "PK" to 10,  "BD" to 10,  "LK" to 10,  "NP" to 10,
-            // East / Southeast Asia
-            "CN" to 11,  "JP" to 10,  "KR" to 9,   "TW" to 9,   "TH" to 9,
-            "VN" to 9,   "ID" to 9,   "PH" to 10,  "MY" to 9,   "SG" to 8,
-            "HK" to 8,
-            // Middle East
-            "AE" to 9,   "SA" to 9,   "QA" to 8,   "KW" to 8,   "BH" to 8,
-            "OM" to 8,   "JO" to 9,   "LB" to 7,   "IL" to 9,   "TR" to 10,
-            "IR" to 10,  "IQ" to 10,
-            // Europe
-            "GB" to 10,  "IE" to 9,   "FR" to 9,   "DE" to 10,  "IT" to 10,
-            "ES" to 9,   "PT" to 9,   "NL" to 9,   "BE" to 9,   "CH" to 9,
-            "AT" to 10,  "SE" to 9,   "NO" to 8,   "DK" to 8,   "FI" to 9,
-            "PL" to 9,   "RU" to 10,  "UA" to 9,   "GR" to 10,  "CZ" to 9,
-            "RO" to 9,
-            // Americas
-            "US" to 10,  "CA" to 10,  "MX" to 10,  "BR" to 11,  "AR" to 10,
-            "CO" to 10,  "CL" to 9,   "PE" to 9,   "VE" to 10,
-            // Africa
-            "KE" to 9,   "NG" to 10,  "ZA" to 9,   "EG" to 10,  "GH" to 9,
-            "UG" to 9,   "TZ" to 9,   "MA" to 9,   "DZ" to 9,   "TN" to 8,
-            "ET" to 9,   "CM" to 9,   "SN" to 9,   "CI" to 10,
-            // Oceania
-            "AU" to 9,   "NZ" to 8,   "FJ" to 7,
-        )
-
-        fun expectedPhoneLength(country: Country): Int? =
-            COUNTRY_LENGTH[country.code.uppercase()]
+    // FIX #3: Returns the E.164-formatted number for Firebase Phone Auth.
+    fun getE164Number(): String? {
+        val phoneUtil = PhoneNumberUtil.getInstance()
+        val fullNumber = "${country.value.phoneNoCode}${number.value}"
+        return try {
+            val parsed = phoneUtil.parse(fullNumber, country.value.code.uppercase())
+            phoneUtil.format(parsed, PhoneNumberUtil.PhoneNumberFormat.E164)
+        } catch (e: Exception) {
+            Timber.e(e, "getE164Number: failed to format '$fullNumber'")
+            fullNumber  // fallback to raw concatenation
+        }
     }
 }

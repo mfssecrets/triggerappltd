@@ -83,7 +83,7 @@ fun EnterNumberScreen(
     // Navigate to EnterCode when validation succeeds and user taps "Request code".
     LaunchedEffect(shouldNavigateToEnterCode) {
         if (shouldNavigateToEnterCode) {
-            navController.navigateSafely(EnterCode(viewModel.numberWithCountryCode.value))
+            navController.navigateSafely(EnterCode(viewModel.getE164Number() ?: ""))
             viewModel.resetShouldNavigate()
         }
     }

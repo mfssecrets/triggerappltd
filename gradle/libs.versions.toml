@@ -27,6 +27,7 @@ jodaTime = "2.12.7"
 moshi = "1.15.1"
 retrofit = "2.11.0"
 room = "2.6.1"
+libphonenumber = "8.13.45"
 
 firebasePlugin = "4.4.2"
 truth = "1.4.2"
@@ -98,6 +99,7 @@ logging-timber = { group = "com.jakewharton.timber", name = "timber", version.re
 jodaTime = { group = "net.danlew", name = "android.joda", version.ref = "jodaTime" }
 permissionX = { group = "com.guolindev.permissionx", name = "permissionx", version.ref = "permissionX" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
+libphonenumber = { group = "com.googlecode.libphonenumber", name = "libphonenumber", version.ref = "libphonenumber" }
 
 
 [plugins]

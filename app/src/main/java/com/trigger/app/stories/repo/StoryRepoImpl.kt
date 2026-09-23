@@ -180,7 +180,28 @@ class StoryRepoImpl(
         Firebase.auth.uid?.let { uid ->
             chatRepo.getChatsForUser(uid).collectLatest { chats ->
                 val storyPreviews = chats?.mapNotNull {
-                    getStoryPreview(it.getOtherUser().uid)
+                    val otherUid = it.getOtherUser().uid
+                    // FIX: if otherUid is empty (anonymous chat / data
+                    // inconsistency), StoryRepo.getStoryDetailsCollection("")
+                    // would call Firebase.firestore.collection("story_details")
+                    // .document("") — which throws IllegalArgumentException
+                    // ("document path must not be empty") → propagates out of
+                    // the mapNotNull → out of collectLatest → uncaught → app
+                    // crashes ("Trigger App keeps stopping"). Skip those chats
+                    // entirely.
+                    if (otherUid.isBlank()) {
+                        Timber.w("getStoryPreviews: skipping chat ${it.chatID} — other user UID is blank")
+                        return@mapNotNull null
+                    }
+                    try {
+                        getStoryPreview(otherUid)
+                    } catch (e: Exception) {
+                        // Defensive: any per-chat failure (permission-denied,
+                        // network error, malformed doc) must NOT crash the
+                        // entire flow. Skip the failing chat.
+                        Timber.e(e, "getStoryPreviews: getStoryPreview failed for uid=$otherUid (non-fatal, skipping)")
+                        null
+                    }
                 } ?: listOf()
                 trySend(storyPreviews)
             }

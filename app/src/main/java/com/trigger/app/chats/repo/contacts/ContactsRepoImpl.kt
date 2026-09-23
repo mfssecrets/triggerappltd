@@ -90,7 +90,26 @@ class ContactsRepoImpl(
      * searches for them on Firebase Firestore
      */
     override suspend fun refreshContactsOnTriggerApp(context: Context) {
-        val phoneContacts = getContactsOnPhone(context).values.toMutableList()
+        // FIX: getContactsOnPhone(context) was called WITHOUT a try/catch.
+        // If the user has NOT granted READ_CONTACTS permission, the
+        // contentResolver.query() call inside throws SecurityException
+        // → propagates to viewModelScope.launch in SelectContactsViewModel
+        // → uncaught → app crashes ("Trigger App keeps stopping").
+        //
+        // Now we wrap it: on SecurityException (or any other failure),
+        // return an empty list → the UI shows "None of your contacts is on
+        // Trigger App" instead of crashing. The user can still search by
+        // username (which doesn't need READ_CONTACTS).
+        val phoneContacts = try {
+            getContactsOnPhone(context).values.toMutableList()
+        } catch (e: SecurityException) {
+            Timber.e(e, "refreshContactsOnTriggerApp: READ_CONTACTS permission not granted — returning empty list")
+            mutableListOf()
+        } catch (e: Exception) {
+            Timber.e(e, "refreshContactsOnTriggerApp: getContactsOnPhone failed unexpectedly")
+            mutableListOf()
+        }
+
         val numOfLists = phoneContacts.count() / 30 + 1
         val shorterPhoneContacts = (0..numOfLists).map { index ->
             val lastIndex =

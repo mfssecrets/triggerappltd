@@ -22,6 +22,14 @@ class ProfileViewModel(
     private val _taskState = MutableStateFlow<TaskState>(TaskState.NONE)
     val taskState: StateFlow<TaskState> = _taskState
 
+    /**
+     * Reset task state back to NONE after SUCCESS / ERROR has been shown to
+     * the user. Called by ProfileScreen once it has surfaced the result.
+     */
+    fun resetTaskState() {
+        _taskState.value = TaskState.NONE
+    }
+
     fun updateName(newName: String) = viewModelScope.launch {
         if (newName.isBlank()) return@launch
 

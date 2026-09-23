@@ -6,11 +6,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
@@ -49,6 +53,7 @@ import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.components.AppBottomBar
 import com.trigger.app.core.presentation.ui.components.BottomBars
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
+import com.trigger.app.core.presentation.ui.components.LoadingSpinnerWithProgress
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.DarkBlue
@@ -203,8 +208,70 @@ fun ProfileScreen(
 
 
             if (taskState is TaskState.LOADING) {
-                (taskState as TaskState.LOADING).progress?.let { progress ->
-                    LoadingSpinner(modifier = Modifier.align(Alignment.Center))
+                // FIX: actually show the % progress (was just generic spinner).
+                // User can see "47%" instead of an indeterminate spinning circle.
+                val progress = (taskState as TaskState.LOADING).progress ?: 0
+                LoadingSpinnerWithProgress(
+                    progress = progress,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            // FIX: show a Snackbar-style message for SUCCESS / ERROR.
+            // Previously: SUCCESS was silently dropped, ERROR was swallowed by
+            // the repo's .catch{}. Now the repo emits DONE.ERROR properly,
+            // and we surface it to the user + reset taskState to NONE so the
+            // spinner doesn't stay forever.
+            LaunchedEffect(taskState) {
+                when (val t = taskState) {
+                    is TaskState.DONE.SUCCESS -> {
+                        // Could show a Snackbar here if a SnackbarHostState is wired up.
+                        // For now, just reset so the spinner disappears.
+                        viewModel.resetTaskState()
+                    }
+                    is TaskState.DONE.ERROR -> {
+                        // Errors will be surfaced via a simple Text popup below.
+                        // (A full Snackbar migration is out of scope for this fix.)
+                    }
+                    else -> Unit
+                }
+            }
+
+            if (taskState is TaskState.DONE.ERROR) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        ) { viewModel.resetTaskState() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    val errRes = (taskState as TaskState.DONE.ERROR).errorMessageRes
+                    Column(
+                        modifier = Modifier
+                            .padding(24.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = stringResource(errRes),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 16.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Default
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.ok),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable { viewModel.resetTaskState() }
+                        )
+                    }
                 }
             }
 

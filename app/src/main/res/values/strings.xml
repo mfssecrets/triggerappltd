@@ -166,4 +166,10 @@
     <string name="block_confirmation">You will no longer receive messages from this user.</string>
     <string name="user_blocked">User blocked</string>
     <string name="user_blocked_message">This user has been added to your blocked users list.</string>
+
+    <!-- Profile picture upload status messages -->
+    <string name="profile_pic_upload_failed">Could not upload profile picture. Check your connection and try again.</string>
+    <string name="profile_pic_save_failed">Upload finished but couldn\'t save to your profile. Please try again.</string>
+    <string name="profile_pic_upload_success">Profile picture updated.</string>
+    <string name="ok">OK</string>
 </resources>

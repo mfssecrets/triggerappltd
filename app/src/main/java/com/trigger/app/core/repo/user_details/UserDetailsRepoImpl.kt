@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.tasks.await
+import com.trigger.app.R
 import timber.log.Timber
 
 class UserDetailsRepoImpl : UserDetailsRepo {
@@ -168,59 +169,99 @@ class UserDetailsRepoImpl : UserDetailsRepo {
             .setContentType("image/jpeg")
             .build()
 
-        // Use Float division (was Long/Long → 0 for small files). Multiply by 100
-        // AFTER the division to get a 0..100 progress value.
-        val newProfilePic = getStorageRefForProfilePic(userID)
-            .putFile(newProfilePicLocalUri, metadata)
-            .addOnProgressListener { task ->
-                val total = task.totalByteCount
-                val progress = if (total > 0) {
-                    ((task.bytesTransferred.toFloat() / total) * 100).toInt()
-                } else 0
-                trySend(TaskState.LOADING(progress = progress))
+        // FIX: Wrapped the entire flow body in try/catch. Previously the outer
+        // `.catch { e -> Timber.e(e, ...) }` SILENTLY swallowed ALL exceptions
+        // (Storage permission denied, network error, file > 5MB, etc.) and the
+        // flow completed with NO error emission. The consumer's _taskState
+        // stayed at the last LOADING(progress) value forever → infinite spinner,
+        // no user feedback. Now we emit TaskState.DONE.ERROR so the UI can show
+        // a message and reset the spinner.
+        try {
+            // Use Float division (was Long/Long → 0 for small files). Multiply
+            // by 100 AFTER the division to get a 0..100 progress value.
+            val newProfilePic = try {
+                getStorageRefForProfilePic(userID)
+                    .putFile(newProfilePicLocalUri, metadata)
+                    .addOnProgressListener { task ->
+                        val total = task.totalByteCount
+                        val progress = if (total > 0) {
+                            ((task.bytesTransferred.toFloat() / total) * 100).toInt()
+                        } else 0
+                        trySend(TaskState.LOADING(progress = progress))
+                    }
+                    .await()
+                    .storage.downloadUrl
+                    .await()
+                    .toString()
+            } catch (e: Exception) {
+                Timber.e(e, "updateUserProfilePic: Storage upload failed for userID=$userID")
+                // FIX: surface the error — was swallowed by .catch() at flow end.
+                trySend(TaskState.DONE.ERROR(R.string.profile_pic_upload_failed))
+                awaitClose { /* no-op */ }
+                return@callbackFlow
             }
-            .await()
-            .storage.downloadUrl
-            .await()
-            .toString()
 
-        val currentUser =
-            getUserProfileReference(userID).get().await().toObject(User::class.java)?.toMiniUser()
-        val newCurrentUser = currentUser?.copy(profilePic = newProfilePic)
+            val currentUser =
+                getUserProfileReference(userID).get().await().toObject(User::class.java)?.toMiniUser()
+            val newCurrentUser = currentUser?.copy(profilePic = newProfilePic)
 
-        // Update the main profile in /users/ (await — was fire-and-forget)
-        try {
-            getUserProfileReference(userID)
-                .update(User::profilePic.name, newProfilePic)
-                .await()
+            // FIX: if the Firestore users/{uid} update fails, the Storage upload
+            // succeeded but the URL is never saved to Firestore → snapshot
+            // listener never fires → user sees cartoon forever, even though
+            // "upload succeeded". Now we surface this as an error to the user.
+            var usersUpdateFailed = false
+            try {
+                getUserProfileReference(userID)
+                    .update(User::profilePic.name, newProfilePic)
+                    .await()
+            } catch (e: Exception) {
+                Timber.e(e, "updateUserProfilePic: users/{uid} update failed")
+                usersUpdateFailed = true
+            }
+
+            // Mirror to public_users projection (best-effort — failure here
+            // doesn't affect the owner's own profile screen, only other users'
+            // view of this user).
+            try {
+                getPublicUserProfileReference(userID)
+                    .update("profilePic", newProfilePic)
+                    .await()
+            } catch (e: Exception) {
+                Timber.e(e, "updateUserProfilePic: public_users/{uid} update failed (non-fatal)")
+            }
+
+            // Update the user profile in the chats collection (best-effort).
+            try {
+                updateUserProfileInExistingChats(currentUser, newCurrentUser)
+            } catch (e: Exception) {
+                Timber.e(e, "updateUserProfilePic: chat propagation failed (non-fatal)")
+            }
+
+            if (usersUpdateFailed) {
+                // FIX: surface this as an error so the user knows the upload
+                // didn't stick — they should retry.
+                trySend(TaskState.DONE.ERROR(R.string.profile_pic_save_failed))
+            } else {
+                trySend(TaskState.DONE.SUCCESS)
+            }
         } catch (e: Exception) {
-            Timber.e(e, "updateUserProfilePic: users/{uid} update failed")
+            // Fallback catch — anything not caught above.
+            Timber.e(e, "updateUserProfilePic: unexpected error")
+            trySend(TaskState.DONE.ERROR(R.string.profile_pic_upload_failed))
         }
-
-        // Mirror to public_users projection
-        try {
-            getPublicUserProfileReference(userID)
-                .update("profilePic", newProfilePic)
-                .await()
-        } catch (e: Exception) {
-            Timber.e(e, "updateUserProfilePic: public_users/{uid} update failed")
-        }
-
-        // Update the user profile in the chats collection
-        try {
-            updateUserProfileInExistingChats(currentUser, newCurrentUser)
-        } catch (e: Exception) {
-            Timber.e(e, "updateUserProfilePic: chat propagation failed (non-fatal)")
-        }
-
-        trySend(TaskState.DONE.SUCCESS)
 
         // No spurious SUCCESS on awaitClose — the previous `awaitClose { trySend(SUCCESS) }`
         // sent a second SUCCESS when the flow was cancelled (e.g., screen exit),
         // making the consumer think a cancelled upload actually succeeded.
         awaitClose { /* no-op — flow is cancelled by the consumer */ }
     }.catch { e ->
-        Timber.e(e, "updateUserProfilePic: flow error")
+        // FIX: don't silently swallow — re-throw so the consumer sees the failure.
+        // The try/catch inside the flow body already emitted TaskState.DONE.ERROR
+        // for known failures. This outer catch is a last-resort safety net that
+        // ensures the flow doesn't silently complete if something unexpected
+        // throws OUTSIDE the try block (e.g. cancellation propagation).
+        Timber.e(e, "updateUserProfilePic: flow-level catch — should not normally fire")
+        throw e
     }
 
 

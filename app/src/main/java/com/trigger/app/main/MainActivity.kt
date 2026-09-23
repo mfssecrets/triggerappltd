@@ -106,6 +106,14 @@ class MainActivity : ComponentActivity() {
     private val authReady = kotlinx.coroutines.flow.MutableStateFlow(false)
     private val isSignedIn = kotlinx.coroutines.flow.MutableStateFlow(false)
 
+    // FIX #1: Store reference to remove in onDestroy (was leaking — listener
+    // accumulated on every Activity recreation).
+    private val authStateListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { auth ->
+        val uid = auth.currentUser?.uid
+        isSignedIn.value = (uid != null)
+        authReady.value = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Keep the splash screen visible until auth state is ready.
         val splashScreen = installSplashScreen()
@@ -114,14 +122,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        // Register an AuthStateListener to detect the user's session (or null)
-        // as soon as Firebase Auth has finished restoring from disk.
-        Firebase.auth.addAuthStateListener { auth ->
-            val uid = auth.currentUser?.uid
-            isSignedIn.value = (uid != null)
-            // Once we've received the first callback we know Auth is initialised.
-            authReady.value = true
-        }
+        // Register the AuthStateListener (removed in onDestroy).
+        Firebase.auth.addAuthStateListener(authStateListener)
 
         setContent {
             AppTheme {
@@ -402,5 +404,13 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(intent)
         }
+    }
+
+    // FIX #1: Remove the AuthStateListener to prevent memory leak.
+    // Without this, every Activity recreation adds another listener that
+    // never gets removed.
+    override fun onDestroy() {
+        super.onDestroy()
+        Firebase.auth.removeAuthStateListener(authStateListener)
     }
 }

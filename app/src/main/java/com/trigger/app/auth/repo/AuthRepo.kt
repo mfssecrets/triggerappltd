@@ -13,6 +13,9 @@ import com.google.firebase.auth.PhoneAuthProvider
  */
 interface AuthRepo {
 
+    /** Called by the ViewModel's onCleared() to stop in-flight callbacks. */
+    fun cancel() {}  // default no-op — AuthRepoImpl overrides
+
     /**
      * Authenticates using the phone number provided.
      *

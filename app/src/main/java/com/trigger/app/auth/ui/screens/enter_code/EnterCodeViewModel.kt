@@ -144,5 +144,7 @@ class EnterCodeViewModel(
     override fun onCleared() {
         super.onCleared()
         countDownTimer?.cancel()
+        // FIX #1: Cancel in-flight Firebase callbacks (lifecycle-safe).
+        authRepo.cancel()
     }
 }

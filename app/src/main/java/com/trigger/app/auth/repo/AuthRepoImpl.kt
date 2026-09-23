@@ -14,6 +14,15 @@ import java.util.concurrent.TimeUnit
 
 class AuthRepoImpl : AuthRepo {
 
+    // FIX #1: Lifecycle flag — when the VM is cleared, callbacks check this
+    // before updating state. Prevents stale callbacks from a dead VM.
+    @Volatile
+    private var isActive = true
+
+    fun cancel() {
+        isActive = false
+    }
+
     // FIX #5: No storedVerificationId or resendToken here — the VM holds the
     // VerificationSession. This fixes the "verificationId lost on VM recreation"
     // bug (the repo was default-constructed on VM recreation, losing the session).
@@ -43,36 +52,37 @@ class AuthRepoImpl : AuthRepo {
         onResult: (success: Boolean, errorMessage: String?) -> Unit
     ) = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
 
-        // FIX #7: Auto-verification converges into the SAME onResult callback
-        // as manual OTP. No separate auth path. Both call signInWithCredential
-        // → onResult(true, null) or onResult(false, errorMessage).
+        // FIX #7: Auto-verification converges into the SAME onResult callback.
+        // FIX #1: Check isActive before updating state (lifecycle-safe).
+        // FIX #3: Use .await() in try-catch instead of addOnCompleteListener + await.
         override fun onVerificationCompleted(authCredential: PhoneAuthCredential) {
-            Firebase.auth.signInWithCredential(authCredential).addOnCompleteListener { task ->
-                Timber.d("onVerificationCompleted: task.isSuccessful=${task.isSuccessful}")
-                if (task.isSuccessful) {
+            if (!isActive) return  // VM is dead — don't update state
+            kotlinx.coroutines.runBlocking {
+                try {
+                    Firebase.auth.signInWithCredential(authCredential).await()
+                    Timber.d("onVerificationCompleted: success")
                     onResult(true, null)
-                } else {
-                    val msg = task.exception?.let { mapFirebaseError(it) } ?: "Auto-verification failed"
-                    onResult(false, msg)
+                } catch (e: Exception) {
+                    Timber.e(e, "onVerificationCompleted: failed")
+                    onResult(false, mapFirebaseError(e))
                 }
             }
         }
 
         // FIX #6: Map Firebase error codes to human-readable messages.
         override fun onVerificationFailed(firebaseException: FirebaseException) {
+            if (!isActive) return  // VM is dead
             Timber.e(firebaseException)
-            val message = mapFirebaseError(firebaseException)
-            onResult(false, message)
+            onResult(false, mapFirebaseError(firebaseException))
         }
 
         override fun onCodeSent(
             verificationId: String,
             forceResendingToken: PhoneAuthProvider.ForceResendingToken
         ) {
+            if (!isActive) return  // VM is dead
             super.onCodeSent(verificationId, forceResendingToken)
             Timber.d("onCodeSent: verificationId=${verificationId.take(8)}...")
-            // Pass verificationId + resendToken to the VM so it can store them
-            // in a VerificationSession.
             onCodeSent(verificationId, forceResendingToken)
         }
     }
@@ -91,37 +101,32 @@ class AuthRepoImpl : AuthRepo {
                 "ERROR_CREDENTIAL_EXPIRED" -> "The verification credential has expired. Please request a new code."
                 "ERROR_USER_DISABLED" -> "This account has been disabled. Please contact support."
                 "ERROR_OPERATION_NOT_ALLOWED" -> "Phone authentication is not enabled for this project."
-                else -> "Authentication error: ${e.errorCode}"
+                // FIX #2: Log the raw Firebase code, show generic message to user.
+                else -> {
+                    Timber.e("Unmapped FirebaseAuthException: ${e.errorCode}")
+                    "Something went wrong. Please try again."
+                }
             }
             else -> "Error: ${e.message ?: "unknown error"}"
         }
     }
 
-    // FIX #5: Takes verificationId from the caller's VerificationSession.
-    // No longer reads from a stored field that gets lost on VM recreation.
+    // FIX #3: Clean coroutine-based — no addOnCompleteListener + await mix.
+    // FIX #1: Check isActive before returning result.
     override suspend fun submitSMSCode(
         smsCode: String,
         verificationId: String,
         onResult: (success: Boolean, errorMessage: String?) -> Unit
     ) {
+        if (!isActive) return  // VM is dead
         try {
             val authCredential = PhoneAuthProvider.getCredential(verificationId, smsCode)
-            Firebase.auth
-                .signInWithCredential(authCredential)
-                .addOnCompleteListener { task ->
-                    Timber.d("submitSMSCode: task.isSuccessful=${task.isSuccessful}")
-                    if (task.isSuccessful) {
-                        onResult(true, null)
-                    } else {
-                        val msg = task.exception?.let { mapFirebaseError(it) } ?: "Verification failed"
-                        onResult(false, msg)
-                    }
-                }
-                .await()
+            Firebase.auth.signInWithCredential(authCredential).await()
+            Timber.d("submitSMSCode: success")
+            if (isActive) onResult(true, null)
         } catch (e: Exception) {
-            // Thrown when the wrong OTP is entered (e.g. FirebaseAuthInvalidCredentialsException)
-            val msg = mapFirebaseError(e)
-            onResult(false, msg)
+            Timber.e(e, "submitSMSCode: failed")
+            if (isActive) onResult(false, mapFirebaseError(e))
         }
     }
 }

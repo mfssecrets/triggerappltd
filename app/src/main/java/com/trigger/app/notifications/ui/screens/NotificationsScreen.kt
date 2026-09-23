@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,23 +46,23 @@ import com.trigger.app.core.presentation.ui.theme.QuickSand
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * Notifications screen — live feed of unread chats with new messages.
+ * Notifications screen — live feed of:
+ *   1. Unread chats (new messages from your conversations)
+ *   2. Story replies (people who replied to your stories)
+ *   3. Missed calls (incoming calls you didn't pick up)
  *
- * Wired up via NotificationsViewModel — snapshots `chat_details` where
- * the current user is a participant AND `unreadMessagesCount > 0`, ordered
- * by timeOfLastMessage descending. Each item renders as:
- *   [avatar] name  "last message preview"  [unread badge]
- *   Tap → opens ActualChat for that chatID.
+ * All three sources use Firestore snapshot listeners — auto-updates in real
+ * time. Items are merged + sorted newest-first across all types.
  *
- * Loading state: spinner while the Firestore snapshot listener is in-flight.
- * Empty state: "No notifications yet" with subtitle when the snapshot returns
- * 0 unread chats.
+ * Tap behavior:
+ *   - UnreadChat → opens ActualChat(chatId)
+ *   - StoryReply → marks as read + (TODO: opens ViewStoryScreen)
+ *   - MissedCall → marks as read + (TODO: opens user profile or callback)
  */
 @Composable
 fun NotificationsScreen(navController: NavController) {
     val viewModel: NotificationsViewModel = koinViewModel()
-    val notifications by viewModel.notifications.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val feed by viewModel.feed.collectAsState()
 
     DefaultScreen(
         navController = navController,
@@ -72,7 +71,7 @@ fun NotificationsScreen(navController: NavController) {
         Box(modifier = Modifier.fillMaxSize()) {
 
             when {
-                isLoading -> {
+                feed.isLoading -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
@@ -82,7 +81,7 @@ fun NotificationsScreen(navController: NavController) {
                     }
                 }
 
-                notifications.isEmpty() -> {
+                feed.items.isEmpty() -> {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -121,14 +120,10 @@ fun NotificationsScreen(navController: NavController) {
 
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(notifications) { item ->
+                        items(feed.items) { item ->
                             NotificationItemRow(
                                 item = item,
-                                onClick = {
-                                    navController.navigateSafely(
-                                        ActualChat(chatId = item.chatId, newContact = null)
-                                    )
-                                }
+                                onClick = { handleItemTap(item, viewModel, navController) }
                             )
                         }
                     }
@@ -140,6 +135,29 @@ fun NotificationsScreen(navController: NavController) {
                 navController = navController,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+        }
+    }
+}
+
+
+private fun handleItemTap(
+    item: NotificationsViewModel.NotificationItem,
+    viewModel: NotificationsViewModel,
+    navController: NavController
+) {
+    when (item.type) {
+        NotificationsViewModel.NotificationType.UnreadChat -> {
+            item.chatId?.let { chatId ->
+                navController.navigateSafely(ActualChat(chatId = chatId, newContact = null))
+            }
+        }
+        NotificationsViewModel.NotificationType.StoryReply -> {
+            viewModel.markStoryReplyAsRead(item)
+            // TODO: route to ViewStoryScreen(storyID = item.storyID)
+        }
+        NotificationsViewModel.NotificationType.MissedCall -> {
+            viewModel.markCallAsRead(item)
+            // TODO: route to user profile or callback screen
         }
     }
 }
@@ -173,15 +191,23 @@ private fun NotificationItemRow(
                 .weight(1f)
                 .align(Alignment.CenterVertically)
         ) {
+            // Subtle type prefix for non-chat notifications so the user
+            // can distinguish them at a glance.
+            val prefix = when (item.type) {
+                NotificationsViewModel.NotificationType.StoryReply -> "Story reply · "
+                NotificationsViewModel.NotificationType.MissedCall -> "Missed call · "
+                else -> ""
+            }
+
             Text(
-                text = item.senderName,
+                text = prefix + item.senderName,
                 fontFamily = QuickSand,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = item.lastMessagePreview,
+                text = item.previewText,
                 fontFamily = Poppins,
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
@@ -191,7 +217,6 @@ private fun NotificationItemRow(
             )
         }
 
-        // Unread count badge on the right.
         if (item.unreadCount > 0) {
             Box(
                 modifier = Modifier

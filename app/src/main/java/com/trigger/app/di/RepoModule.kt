@@ -2,6 +2,8 @@ package com.trigger.app.di
 
 import com.trigger.app.auth.repo.AuthRepo
 import com.trigger.app.auth.repo.AuthRepoImpl
+import com.trigger.app.calls.repo.CallsRepo
+import com.trigger.app.calls.repo.CallsRepoImpl
 import com.trigger.app.chats.repo.chats.ChatRepo
 import com.trigger.app.chats.repo.chats.ChatRepoImpl
 import com.trigger.app.chats.repo.contacts.ContactsRepo
@@ -39,6 +41,10 @@ val repoModule = module {
     // Even though EnterCodeViewModel currently uses the default-arg constructor,
     // factory is the safe-by-default choice if anyone refactors to Koin injection.
     factory<AuthRepo> { AuthRepoImpl() }
+
+    // Calls — singleton. Holds no per-VM state. Read (missed calls query) +
+    // write (call records) are both safe to share across VMs.
+    single<CallsRepo> { CallsRepoImpl() }
 
     // Moderation
     single<ModerationRepo> { ModerationRepoImpl() }

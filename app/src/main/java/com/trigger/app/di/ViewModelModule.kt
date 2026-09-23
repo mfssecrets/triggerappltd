@@ -23,6 +23,6 @@ val viewModelModule = module {
     viewModel { StoriesViewModel(get(), get(), get()) }
     viewModel { ViewStoryViewModel(get(), get()) }
 
-    // Notifications feed VM — listens to chat_details snapshot for unread msgs.
-    viewModel { NotificationsViewModel(get()) }
+    // Notifications feed VM — listens to chat_details + story replies + missed calls.
+    viewModel { NotificationsViewModel(get(), get(), get()) }
 }

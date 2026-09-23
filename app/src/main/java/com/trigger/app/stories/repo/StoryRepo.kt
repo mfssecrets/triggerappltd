@@ -85,4 +85,58 @@ interface StoryRepo {
 
     // Get the list of viewer UIDs for an author's specific story.
     suspend fun getStoryViewers(authorID: String, storyID: String): List<String>
+
+    /**
+     * Live list of UNREAD replies on the current user's stories.
+     *
+     * Uses a Firestore collection-group query on `replies` sub-sub-collections
+     * across all of the user's stories, filtered by `storyAuthorUID == uid`
+     * AND `read == false`. Ordered by `sentAt` DESC (newest first).
+     *
+     * Requires the reply docs to include `storyAuthorUID` + `read` fields
+     * (see `sendStoryReply` impl — both are set when a reply is written).
+     *
+     * Used by NotificationsScreen.
+     */
+    fun getMyStoryReplies(): Flow<List<StoryReply>>
+
+    /**
+     * Mark a story reply as read (after the user taps the notification row).
+     */
+    suspend fun markStoryReplyAsRead(
+        storyAuthor: String,
+        storyID: String,
+        replyID: String
+    )
+}
+
+/**
+ * Single reply to one of the current user's stories.
+ *
+ * Lightweight projection of the Firestore reply doc — only the fields the
+ * notifications UI needs. The full doc has more fields (storyAuthorUID, read)
+ * that are used for querying but not for display.
+ */
+data class StoryReply(
+    val replyID: String,
+    val storyID: String,
+    val storyAuthorUID: String,
+    val senderID: String,
+    val senderName: String,
+    val senderProfilePic: String?,
+    val message: String,
+    val sentAt: Long,
+    val read: Boolean = false
+) {
+    constructor() : this(
+        replyID = "",
+        storyID = "",
+        storyAuthorUID = "",
+        senderID = "",
+        senderName = "",
+        senderProfilePic = null,
+        message = "",
+        sentAt = 0L,
+        read = false
+    )
 }

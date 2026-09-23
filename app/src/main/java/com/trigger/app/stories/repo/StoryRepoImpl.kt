@@ -324,13 +324,19 @@ class StoryRepoImpl(
         val sender = userRepo.getUserFromUID(senderID)  // own uid — OK
         val replyDoc = StoryRepo.getStoryRepliesCollection(storyAuthor, storyID)
             .document()
+        // FIX: include storyAuthorUID + storyID + read so collection-group
+        // queries can find "all unread replies on MY stories" without
+        // iterating each story individually (N+1 → 1 query).
         val reply = mapOf<String, Any?>(
             "replyID" to replyDoc.id,
+            "storyID" to storyID,
+            "storyAuthorUID" to storyAuthor,  // NEW — enables collection-group query
             "senderID" to senderID,
             "senderName" to (sender?.name ?: ""),
             "senderProfilePic" to (sender?.profilePic ?: ""),
             "message" to replyText.trim(),
-            "sentAt" to System.currentTimeMillis()
+            "sentAt" to System.currentTimeMillis(),
+            "read" to false  // NEW — flips to true when the author views it
         )
         return try {
             replyDoc.set(reply).await()
@@ -351,6 +357,69 @@ class StoryRepoImpl(
         } catch (e: Exception) {
             Timber.e(e, "getStoryViewers: failed")
             emptyList()
+        }
+    }
+
+
+    override fun getMyStoryReplies(): Flow<List<StoryReply>> = callbackFlow {
+        val uid = Firebase.auth.uid ?: run {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+
+        // Collection-group query across ALL `replies` sub-sub-collections
+        // (one per story). Filtered to replies on MY stories + unread.
+        //
+        // NOTE: requires a Firestore composite index on (storyAuthorUID,
+        // read, sentAt) for the `replies` collection group. The first
+        // request from the SDK returns a "missing index" error with a
+        // one-click create link in the console.
+        val listener = Firebase.firestore.collectionGroup("replies")
+            .whereEqualTo("storyAuthorUID", uid)
+            .whereEqualTo("read", false)
+            .orderBy("sentAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Timber.e(error, "getMyStoryReplies: snapshot error")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+
+                val replies = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        val reply = doc.toObject<StoryReply>() ?: return@mapNotNull null
+                        // Use doc.id as the canonical replyID — defensive against
+                        // missing field in older reply docs.
+                        reply.copy(replyID = doc.id)
+                    } catch (e: Exception) {
+                        Timber.e(e, "getMyStoryReplies: parse failure for ${doc.id}")
+                        null
+                    }
+                }
+                trySend(replies)
+            }
+
+        awaitClose { listener.remove() }
+    }
+
+
+    override suspend fun markStoryReplyAsRead(
+        storyAuthor: String,
+        storyID: String,
+        replyID: String
+    ) {
+        try {
+            StoryRepo.getStoryRepliesCollection(storyAuthor, storyID)
+                .document(replyID)
+                .update("read", true)
+                .await()
+        } catch (e: Exception) {
+            Timber.e(e, "markStoryReplyAsRead: failed for replyID=$replyID")
         }
     }
 

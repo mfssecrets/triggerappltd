@@ -8,133 +8,218 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.ktx.Firebase
+import com.trigger.app.calls.domain.Call
+import com.trigger.app.calls.repo.CallsRepo
 import com.trigger.app.chats.domain.Chat
 import com.trigger.app.chats.repo.chats.ChatRepo
+import com.trigger.app.stories.repo.StoryReply
+import com.trigger.app.stories.repo.StoryRepo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Notifications feed — live list of unread chats with new messages.
+ * Notifications feed — merged live list of:
+ *   1. Unread chats (chats where the current user is a participant with
+ *      unreadMessagesCount > 0)
+ *   2. Story replies on the current user's stories (where read == false)
+ *   3. Missed calls (calls where the current user is the callee AND status
+ *      == MISSED AND read == false)
  *
- * For now this is a simple implementation: snapshots `chat_details` where the
- * current user is a participant AND `unreadMessagesCount > 0`, ordered by
- * timeOfLastMessage descending. Each item renders as:
- *   [avatar] name  "last message preview"
- *   Tap → opens the ActualChat for that chatID.
+ * Each emission replaces the entire list. The list is grouped by section
+ * so the UI can render headers.
  *
- * Future enhancements (out of scope for this fix):
- *  - Missed calls row
- *  - Story replies
- *  - Message requests count badge
- *  - Mark-as-read on tap
+ * All three sources use Firestore snapshot listeners — they auto-update
+ * in real time as the underlying data changes.
  */
 class NotificationsViewModel(
-    private val chatRepo: ChatRepo
+    private val chatRepo: ChatRepo,
+    private val storyRepo: StoryRepo,
+    private val callsRepo: CallsRepo
 ) : ViewModel() {
 
     data class NotificationItem(
-        val chatId: String,
+        val id: String,                // unique ID for item keying
+        val type: NotificationType,
+        val chatId: String?,           // for UnreadChat — used to nav to ActualChat
         val senderName: String,
         val senderProfilePic: String?,
-        val lastMessagePreview: String,
-        val unreadCount: Int,
-        val timestamp: Long?
+        val previewText: String,
+        val unreadCount: Int,          // for UnreadChat badge; 0 for others
+        val timestamp: Long?,
+        // Story-reply-specific routing data:
+        val storyAuthorUID: String? = null,
+        val storyID: String? = null,
+        val replyID: String? = null,
+        // Call-specific routing data:
+        val callID: String? = null
     )
 
-    private val _notifications = MutableStateFlow<List<NotificationItem>>(emptyList())
-    val notifications: StateFlow<List<NotificationItem>> = _notifications
+    enum class NotificationType { UnreadChat, StoryReply, MissedCall }
 
-    private val _isLoading = MutableStateFlow(true)
-    val isLoading: StateFlow<Boolean> = _isLoading
+    data class NotificationFeed(
+        val isLoading: Boolean,
+        val items: List<NotificationItem>
+    )
+
+    private val _feed = MutableStateFlow(NotificationFeed(isLoading = true, items = emptyList()))
+    val feed: StateFlow<NotificationFeed> = _feed
+
+    private val _unreadChats = MutableStateFlow<List<NotificationItem>>(emptyList())
+    private val _storyReplies = MutableStateFlow<List<NotificationItem>>(emptyList())
+    private val _missedCalls = MutableStateFlow<List<NotificationItem>>(emptyList())
 
     init {
-        startListening()
+        startListeningForUnreadChats()
+        startListeningForStoryReplies()
+        startListeningForMissedCalls()
+        mergeFeeds()
     }
 
-    private fun startListening() {
-        val uid = Firebase.auth.uid ?: run {
-            _isLoading.value = false
-            return
-        }
+    private fun startListeningForUnreadChats() {
+        val uid = Firebase.auth.uid ?: return
 
         viewModelScope.launch {
             try {
-                // Snapshot chats where current user is first OR second participant
-                // AND there are unread messages for them.
-                //
-                // Firestore supports `where` Filter.or — used to query both sides
-                // of the chat partnership in a single round-trip.
-                val firestore = Firebase.firestore
-                val firstUserFilter = Filter.equalTo(
-                    "firstMiniUser.uid", uid
-                )
-                val secondUserFilter = Filter.equalTo(
-                    "secondMiniUser.uid", uid
-                )
+                val firstUserFilter = Filter.equalTo("firstMiniUser.uid", uid)
+                val secondUserFilter = Filter.equalTo("secondMiniUser.uid", uid)
 
-                firestore.collection(ChatRepo.CHAT_DETAILS)
-                    .where(Filter.or(
-                        firstUserFilter, secondUserFilter
-                    ))
+                Firebase.firestore.collection(ChatRepo.CHAT_DETAILS)
+                    .where(Filter.or(firstUserFilter, secondUserFilter))
                     .orderBy("timeOfLastMessage", Query.Direction.DESCENDING)
                     .addSnapshotListener { snapshot, error ->
-                        _isLoading.value = false
                         if (error != null) {
-                            Timber.e(error, "NotificationsViewModel: snapshot listener error")
+                            Timber.e(error, "startListeningForUnreadChats: snapshot error")
                             return@addSnapshotListener
                         }
-                        if (snapshot == null) {
-                            _notifications.value = emptyList()
-                            return@addSnapshotListener
-                        }
+                        if (snapshot == null) return@addSnapshotListener
 
                         val items = snapshot.documents.mapNotNull { doc ->
                             try {
                                 val chat = doc.toObject<Chat>() ?: return@mapNotNull null
                                 if (chat.isDisabled) return@mapNotNull null
+                                if (chat.unreadMessagesCount <= 0) return@mapNotNull null
 
-                                // Figure out which side is the current user — the
-                                // OTHER side is whose name + pic we display.
                                 val isCurrentUserFirst = chat.firstMiniUser.uid == uid
                                 val otherUser = if (isCurrentUserFirst)
                                     chat.secondMiniUser else chat.firstMiniUser
 
-                                // Only show chats with unread > 0 (the user has
-                                // notifications for unread msgs only — read chats
-                                // aren't notifications).
-                                if (chat.unreadMessagesCount <= 0) return@mapNotNull null
-
-                                val preview = buildMessagePreview(chat)
                                 NotificationItem(
+                                    id = "chat_${chat.chatID}",
+                                    type = NotificationType.UnreadChat,
                                     chatId = chat.chatID,
                                     senderName = otherUser.name,
                                     senderProfilePic = otherUser.profilePic,
-                                    lastMessagePreview = preview,
+                                    previewText = buildMessagePreview(chat),
                                     unreadCount = chat.unreadMessagesCount,
                                     timestamp = chat.timeOfLastMessage
                                 )
                             } catch (e: Exception) {
-                                Timber.e(e, "NotificationsViewModel: parse failure for doc ${doc.id}")
+                                Timber.e(e, "startListeningForUnreadChats: parse failure for ${doc.id}")
                                 null
                             }
                         }
-
-                        _notifications.value = items
+                        _unreadChats.value = items
                     }
             } catch (e: Exception) {
-                Timber.e(e, "NotificationsViewModel: failed to set up snapshot listener")
-                _isLoading.value = false
-                _notifications.value = emptyList()
+                Timber.e(e, "startListeningForUnreadChats: failed to set up listener")
+            }
+        }
+    }
+
+    private fun startListeningForStoryReplies() {
+        viewModelScope.launch {
+            try {
+                storyRepo.getMyStoryReplies().collect { replies ->
+                    _storyReplies.value = replies.map {
+                        NotificationItem(
+                            id = "reply_${it.replyID}",
+                            type = NotificationType.StoryReply,
+                            chatId = null,
+                            senderName = it.senderName,
+                            senderProfilePic = it.senderProfilePic,
+                            previewText = "Replied: ${it.message.take(60)}${if (it.message.length > 60) "..." else ""}",
+                            unreadCount = 0,
+                            timestamp = it.sentAt,
+                            storyAuthorUID = it.storyAuthorUID,
+                            storyID = it.storyID,
+                            replyID = it.replyID
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "startListeningForStoryReplies: failed")
+                _storyReplies.value = emptyList()
+            }
+        }
+    }
+
+    private fun startListeningForMissedCalls() {
+        viewModelScope.launch {
+            try {
+                callsRepo.getMissedCallNotifications().collect { calls ->
+                    _missedCalls.value = calls.map { call ->
+                        NotificationItem(
+                            id = "call_${call.callID}",
+                            type = NotificationType.MissedCall,
+                            chatId = null,
+                            senderName = "Missed call",  // placeholder — sender lookup is future work
+                            senderProfilePic = null,
+                            previewText = "Missed ${call.callType.firebaseKey.lowercase()} call",
+                            unreadCount = 0,
+                            timestamp = call.startedAt,
+                            callID = call.callID
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "startListeningForMissedCalls: failed")
+                _missedCalls.value = emptyList()
+            }
+        }
+    }
+
+    private fun mergeFeeds() {
+        viewModelScope.launch {
+            combine(_unreadChats, _storyReplies, _missedCalls) { chats, replies, calls ->
+                // Order: newest first across all three types.
+                val merged = (chats + replies + calls)
+                    .sortedByDescending { it.timestamp ?: 0L }
+
+                // Set loading false once we've received at least one emission
+                // from each source. (Initial state is emptyList from all three,
+                // so the first merge will be empty but loading=false.)
+                NotificationFeed(isLoading = false, items = merged)
+            }.collect { feed ->
+                _feed.value = feed
             }
         }
     }
 
     /**
-     * Build a short preview string from the chat's lastMessageType map. Returns
-     * "New message" as a generic fallback if parsing fails.
+     * Mark a story reply as read (after the user taps the row).
      */
+    fun markStoryReplyAsRead(item: NotificationItem) {
+        val authorUID = item.storyAuthorUID ?: return
+        val storyID = item.storyID ?: return
+        val replyID = item.replyID ?: return
+        viewModelScope.launch {
+            storyRepo.markStoryReplyAsRead(authorUID, storyID, replyID)
+        }
+    }
+
+    /**
+     * Mark a missed call as read (after the user taps the row).
+     */
+    fun markCallAsRead(item: NotificationItem) {
+        val callID = item.callID ?: return
+        viewModelScope.launch {
+            callsRepo.markCallAsRead(callID)
+        }
+    }
+
     private fun buildMessagePreview(chat: Chat): String {
         return try {
             val typeMap = chat.lastMessageType

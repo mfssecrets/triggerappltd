@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -205,7 +209,28 @@ fun ActualChatScreen(
                     navController.navigateSafely(ViewImage(imageUrl))
                 }
 
+                // FIX #2: Scroll-up trigger for pagination.
+                // With reverseLayout=true, firstVisibleItemIndex increases as the
+                // user scrolls UP (toward older messages). When it reaches
+                // messages.size - 5, trigger loadOlderMessages().
+                val lazyListState = rememberLazyListState()
+
+                // Detect when user scrolls near the oldest loaded message.
+                val hasMore by viewModel.hasMoreMessages.collectAsState()
+                val isLoadingOlder by viewModel.isLoadingOlder.collectAsState()
+                LaunchedEffect(lazyListState, viewModel.messages.size) {
+                    snapshotFlow { lazyListState.firstVisibleItemIndex }
+                        .filter { it >= viewModel.messages.size - 5 && viewModel.messages.size > 0 }
+                        .distinctUntilChanged()
+                        .collect {
+                            if (hasMore && !isLoadingOlder) {
+                                viewModel.loadOlderMessages()
+                            }
+                        }
+                }
+
                 LazyColumn(
+                    state = lazyListState,
                     verticalArrangement = Arrangement.Bottom,
                     modifier = Modifier
                         .fillMaxWidth()

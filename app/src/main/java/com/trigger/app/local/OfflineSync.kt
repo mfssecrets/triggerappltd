@@ -111,9 +111,10 @@ class MessageSyncRepository(
     private val messagesRepo: MessagesRepo,
     private val messageDao: MessageDao
 ) {
-    // Cursor pagination state — per chat.
-    // Keyed by chatID: the oldest timeSent in the current page (Long).
-    private val paginationCursors = mutableMapOf<String, Long>()
+    // FIX #1: DocumentSnapshot cursor (was Long timeSent — could skip/duplicate
+    // messages with the same millisecond). DocumentSnapshot uses the document's
+    // actual position in the query index, guaranteeing no skips/duplicates.
+    private val paginationCursors = mutableMapOf<String, DocumentSnapshot?>()
     private val loadingOlder = mutableSetOf<String>()
     private val reachedBeginning = mutableSetOf<String>()
     /**
@@ -133,13 +134,10 @@ class MessageSyncRepository(
                     // Upsert all messages to Room.
                     messageDao.upsertAll(messages.map { it.toEntity(chatID) })
 
-                    // Initialize cursor on FIRST emission only — the oldest
-                    // message in the latest 50 (last in DESCENDING order).
-                    // Subsequent emissions (new messages) don't update the
-                    // cursor, so scroll-up pagination isn't disturbed.
-                    if (chatID !in paginationCursors && messages.isNotEmpty()) {
-                        paginationCursors[chatID] = messages.last().timeSent
-                    }
+                    // FIX #1: Cursor is NOT initialized here — the snapshot listener
+                    // returns List<Message>, not QuerySnapshot, so we can't get
+                    // DocumentSnapshot. The cursor is established lazily in
+                    // loadOlderMessages() on the first scroll-up.
                 }
             } catch (e: Exception) {
                 Timber.e(e, "MessageSyncRepository: Firestore sync failed for chatID=$chatID (non-fatal — Room cache still serves)")
@@ -329,12 +327,10 @@ class MessageSyncRepository(
     suspend fun loadOlderMessages(chatID: String) {
         if (loadingOlder.contains(chatID)) return
         if (reachedBeginning.contains(chatID)) return
-
-        val cursor = paginationCursors[chatID] ?: return
         loadingOlder.add(chatID)
 
         try {
-            val snapshot = ChatRepo.getMessagesCollectionRef(chatID)
+            val baseQuery = ChatRepo.getMessagesCollectionRef(chatID)
                 .where(
                     Filter.or(
                         Filter.notEqualTo(Message::messageStatus.name, MessageStatus.NOT_SENT),
@@ -342,19 +338,48 @@ class MessageSyncRepository(
                     )
                 )
                 .orderBy(Message::timeSent.name, Query.Direction.DESCENDING)
-                .startAfter(cursor)
-                .limit(50)
-                .get()
-                .await()
 
-            if (snapshot.isEmpty) {
-                reachedBeginning.add(chatID)
-                Timber.d("loadOlderMessages: reached beginning for chat $chatID")
+            val cursor = paginationCursors[chatID]
+
+            if (cursor == null) {
+                // FIX #1: First scroll-up — establish the cursor via a one-time query.
+                // The snapshot listener already loaded the latest 50 into Room.
+                // This query gets the SAME 50 (for the DocumentSnapshot cursor)
+                // then immediately queries the NEXT 50 (older messages).
+                val initialSnapshot = baseQuery.limit(50).get().await()
+                if (initialSnapshot.isEmpty || initialSnapshot.size() < 50) {
+                    reachedBeginning.add(chatID)
+                    loadingOlder.remove(chatID)
+                    return
+                }
+                // Store the last document of the latest 50 as the cursor.
+                val initialCursor = initialSnapshot.documents.lastOrNull()
+                paginationCursors[chatID] = initialCursor
+
+                // Query the NEXT 50 older messages.
+                if (initialCursor != null) {
+                    val olderSnapshot = baseQuery.startAfter(initialCursor).limit(50).get().await()
+                    if (olderSnapshot.isEmpty) {
+                        reachedBeginning.add(chatID)
+                    } else {
+                        val messages = olderSnapshot.toObjects(Message::class.java)
+                        messageDao.upsertAll(messages.map { it.toEntity(chatID) })
+                        paginationCursors[chatID] = olderSnapshot.documents.lastOrNull()
+                        Timber.d("loadOlderMessages: loaded ${messages.size} older (initial)")
+                    }
+                }
             } else {
-                val messages = snapshot.toObjects(Message::class.java)
-                messageDao.upsertAll(messages.map { it.toEntity(chatID) })
-                paginationCursors[chatID] = messages.last().timeSent
-                Timber.d("loadOlderMessages: loaded ${messages.size} older messages for chat $chatID")
+                // Subsequent scroll-up — use the stored DocumentSnapshot cursor.
+                val snapshot = baseQuery.startAfter(cursor).limit(50).get().await()
+                if (snapshot.isEmpty) {
+                    reachedBeginning.add(chatID)
+                    Timber.d("loadOlderMessages: reached beginning for chat $chatID")
+                } else {
+                    val messages = snapshot.toObjects(Message::class.java)
+                    messageDao.upsertAll(messages.map { it.toEntity(chatID) })
+                    paginationCursors[chatID] = snapshot.documents.lastOrNull()
+                    Timber.d("loadOlderMessages: loaded ${messages.size} older for chat $chatID")
+                }
             }
         } catch (e: Exception) {
             Timber.e(e, "loadOlderMessages: failed for chatID=$chatID")

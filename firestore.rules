@@ -214,11 +214,14 @@ service cloud.firestore {
       allow read: if isChatParticipant(chatID);
 
       // Create: only participants, and the sender must be the caller.
+      // FIX #3 (conflict resolution): timeSent must not be > 1 min in the future
+      // (prevents spoofed future timestamps that would win last-write-wins).
       allow create: if isChatParticipant(chatID)
         && request.resource.data.senderID == uid()
         && request.resource.data.messageID == messageID
         && request.resource.data.timeSent is int
-        && request.resource.data.messageStatus is string;
+        && request.resource.data.messageStatus is string
+        && request.resource.data.timeSent <= request.time.toMillis() + 60000;
 
       // Update: only participants. BLOCK senderID mutation — otherwise the
       // FIX #8: Sender-only edit enforcement. The sender can update any field

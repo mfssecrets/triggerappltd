@@ -141,6 +141,159 @@ class MessageSyncRepository(
             roomJob.cancel()
         }
     }
+
+    /**
+     * OFFLINE-FIRST SEND: writes the message to Room IMMEDIATELY (instant UI
+     * with NOT_SENT status), then attempts the Firestore write in the background.
+     *
+     * If online: Firestore processes the write → snapshot listener fires →
+     * Room is updated with SENT status → UI shows "sent".
+     *
+     * If offline: Firestore queues the write via its built-in persistence.
+     * The message stays as NOT_SENT in Room (UI shows "sending"). When the
+     * network returns, Firestore processes the pending write → snapshot
+     * listener fires → Room updated → UI shows "sent".
+     *
+     * If the app is killed while offline: Room cache still has the NOT_SENT
+     * message. On next launch, syncMessages() starts → Firestore snapshot
+     * listener starts → if the pending write was processed, it appears with
+     * SENT. If the pending write was evicted, call retryPendingMessages().
+     */
+    suspend fun sendOfflineMessage(
+        chatID: String,
+        messageType: com.trigger.app.chats.domain.MessageType,
+        finalMessageStatus: com.trigger.app.chats.domain.MessageStatus = com.trigger.app.chats.domain.MessageStatus.SENT
+    ): String? {
+        val messageID = java.util.UUID.randomUUID().toString()
+        val message = com.trigger.app.chats.domain.Message(
+            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            messageID = messageID,
+            messageType = messageType.toFirebaseMap(),
+            timeSent = System.currentTimeMillis(),
+            messageStatus = com.trigger.app.chats.domain.MessageStatus.NOT_SENT  // NOT_SENT → shows "sending" in UI
+        )
+
+        // 1. Write to Room IMMEDIATELY — UI shows the message instantly.
+        messageDao.upsertAll(listOf(message.toEntity(chatID)))
+
+        // 2. Attempt Firestore write (will be queued by Firestore if offline).
+        //    The existing sendMessage() uses writeBatch for atomic message +
+        //    chat_details update.
+        return try {
+            val firestoreID = messagesRepo.sendMessage(chatID, messageType, finalMessageStatus)
+            if (firestoreID == null) {
+                // Firestore write failed — message stays as NOT_SENT in Room.
+                // Firestore's built-in persistence may retry later.
+                Timber.w("sendOfflineMessage: Firestore write failed for $messageID — stays NOT_SENT in Room")
+            }
+            // If successful, the Firestore snapshot listener will fire and
+            // update Room with the correct status. We don't need to manually
+            // update Room here — the sync flow handles it.
+            firestoreID ?: messageID
+        } catch (e: Exception) {
+            Timber.e(e, "sendOfflineMessage: Firestore write failed (offline?) — message queued in Room as NOT_SENT")
+            messageID
+        }
+    }
+
+    /**
+     * OFFLINE-FIRST IMAGE SEND: same pattern as sendOfflineMessage but for
+     * images. Writes a NOT_SENT message to Room (with local URI as preview),
+     * then attempts the Storage upload + Firestore update in the background.
+     */
+    suspend fun sendOfflineImageMessage(
+        chatID: String,
+        imageUri: String,
+        messageText: String?
+    ): String? {
+        val imageType = com.trigger.app.chats.domain.MessageType.Image(messageText ?: "", imageUri)
+        val messageID = java.util.UUID.randomUUID().toString()
+        val message = com.trigger.app.chats.domain.Message(
+            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            messageID = messageID,
+            messageType = imageType.toFirebaseMap(),
+            timeSent = System.currentTimeMillis(),
+            messageStatus = com.trigger.app.chats.domain.MessageStatus.NOT_SENT
+        )
+
+        // 1. Write to Room immediately (shows local image instantly).
+        messageDao.upsertAll(listOf(message.toEntity(chatID)))
+
+        // 2. Attempt Firestore + Storage upload in background.
+        return try {
+            messagesRepo.sendImageMessage(chatID, imageUri, messageText) ?: messageID
+        } catch (e: Exception) {
+            Timber.e(e, "sendOfflineImageMessage: upload failed — queued as NOT_SENT in Room")
+            messageID
+        }
+    }
+
+    /**
+     * OFFLINE-FIRST AUDIO SEND: same pattern for audio messages.
+     */
+    suspend fun sendOfflineAudioMessage(
+        chatID: String,
+        audioUri: String,
+        duration: Long
+    ): String? {
+        val audioType = com.trigger.app.chats.domain.MessageType.Audio(duration, "")
+        val messageID = java.util.UUID.randomUUID().toString()
+        val message = com.trigger.app.chats.domain.Message(
+            senderID = com.google.firebase.auth.ktx.auth.let { com.google.firebase.ktx.Firebase.auth.uid } ?: "",
+            messageID = messageID,
+            messageType = audioType.toFirebaseMap(),
+            timeSent = System.currentTimeMillis(),
+            messageStatus = com.trigger.app.chats.domain.MessageStatus.NOT_SENT
+        )
+
+        // 1. Write to Room immediately.
+        messageDao.upsertAll(listOf(message.toEntity(chatID)))
+
+        // 2. Attempt Firestore + Storage upload in background.
+        return try {
+            messagesRepo.sendAudioMessage(chatID, audioUri, duration) ?: messageID
+        } catch (e: Exception) {
+            Timber.e(e, "sendOfflineAudioMessage: upload failed — queued as NOT_SENT in Room")
+            messageID
+        }
+    }
+
+    /**
+     * RETRY: queries Room for all NOT_SENT messages in a chat and retries
+     * the Firestore write for each. Called on:
+     *   - Screen load (catch stuck messages from killed-app-while-offline)
+     *   - Network restored (via NetworkObserver)
+     *
+     * Uses the existing messagesRepo.retrySendMessage() which re-uploads
+     * failed image/audio from the local URI.
+     */
+    suspend fun retryPendingMessages(chatID: String) {
+        try {
+            // Query Room for all NOT_SENT messages in this chat.
+            val cached = messageDao.getCachedMessages(chatID)
+            val pending = cached.filter { it.messageStatus == "NOT_SENT" }
+
+            if (pending.isEmpty()) return
+
+            Timber.d("retryPendingMessages: found ${pending.size} pending messages for chat $chatID")
+
+            for (entity in pending) {
+                try {
+                    val success = messagesRepo.retrySendMessage(chatID, entity.messageID)
+                    if (success) {
+                        // Update Room status to SENT immediately (Firestore
+                        // snapshot listener will also update, but this gives
+                        // instant feedback).
+                        messageDao.updateStatus(entity.messageID, "SENT")
+                    }
+                } catch (e: Exception) {
+                    Timber.e(e, "retryPendingMessages: retry failed for ${entity.messageID}")
+                }
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "retryPendingMessages: failed for chat $chatID")
+        }
+    }
 }
 
 

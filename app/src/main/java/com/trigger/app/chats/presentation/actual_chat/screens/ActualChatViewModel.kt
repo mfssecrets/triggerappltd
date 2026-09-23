@@ -144,6 +144,11 @@ class ActualChatViewModel(
         if (chatID != null) {
             Timber.d("chatID is $chatID")
 
+            // Retry any NOT_SENT messages from a previous offline session
+            // (e.g., user sent a message while offline, app was killed before
+            // Firestore synced, now on reopen we retry the pending writes).
+            messageSyncRepository?.retryPendingMessages(chatID!!)
+
             // Offline-first: read from Room cache (instant) with Firestore sync
             // in background. Falls back to direct Firestore flow if sync repo is null.
             (messageSyncRepository?.syncMessages(chatID!!) ?: messagesRepo.getMessagesFromChatID(chatID!!))
@@ -204,7 +209,9 @@ class ActualChatViewModel(
             val message = textMessage.value.text
             _textMessage.value = TextFieldValue("")
 
-            messagesRepo.sendMessage(chatID!!, MessageType.Text(message))
+            // Offline-first: write to Room first (instant UI), then Firestore.
+            messageSyncRepository?.sendOfflineMessage(chatID!!, MessageType.Text(message))
+                ?: messagesRepo.sendMessage(chatID!!, MessageType.Text(message))
         }
     }
 
@@ -251,12 +258,13 @@ class ActualChatViewModel(
     }
 
 
-    @OptIn(DelicateCoroutinesApi::class)
     suspend fun sendImage(imageUri: String, imageCaption: String) {
-        GlobalScope.launch {
-            chatID?.let { messagesRepo.sendImageMessage(it, imageUri, imageCaption) }
+        // Offline-first: write to Room first (instant local image preview),
+        // then attempt Storage upload + Firestore update in background.
+        chatID?.let { cid ->
+            messageSyncRepository?.sendOfflineImageMessage(cid, imageUri, imageCaption)
+                ?: messagesRepo.sendImageMessage(cid, imageUri, imageCaption)
         }
-        delay(1200)
     }
 
 
@@ -291,7 +299,13 @@ class ActualChatViewModel(
             createConversation()
 
         val audioFileUri = audioRecorder.endRecording()
-        messagesRepo.sendAudioMessage(
+        // Offline-first: write to Room first (instant audio placeholder),
+        // then attempt Storage upload + Firestore update in background.
+        messageSyncRepository?.sendOfflineAudioMessage(
+            chatID = chatID!!,
+            audioUri = audioFileUri?.toString() ?: return@launch,
+            duration = recordingDurationInMillis.value
+        ) ?: messagesRepo.sendAudioMessage(
             chatID = chatID!!,
             audioUri = audioFileUri?.toString() ?: return@launch,
             duration = (recorderState.value as? RecorderState.Ended)?.timeInMillis ?: 0L

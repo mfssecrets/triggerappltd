@@ -103,6 +103,13 @@ service cloud.firestore {
         allow read:   if isSignedIn() && userId == uid();
         allow write:  if isSignedIn() && userId == uid();
       }
+
+      // Device FCM tokens: users/{uid}/deviceTokens/{tokenId}
+      // Owner-only — FCM tokens are private device identifiers, NOT public data.
+      match /deviceTokens/{tokenId} {
+        allow read:   if isSignedIn() && userId == uid();
+        allow write:  if isSignedIn() && userId == uid();
+      }
     }
 
     // ---------------------------------------------------------------------------

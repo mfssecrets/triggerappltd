@@ -3,6 +3,7 @@ package com.trigger.app.stories.repo
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import com.trigger.app.chats.domain.getOtherUser
 import com.trigger.app.chats.repo.chats.ChatRepo
 import com.trigger.app.core.repo.user.UserRepo
@@ -11,6 +12,8 @@ import com.trigger.app.stories.domain.StoryPreview
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.firestore.toObjects
 import com.google.firebase.ktx.Firebase
@@ -140,8 +143,15 @@ class StoryRepoImpl(
     }
 
 
-    override suspend fun getStoriesForUID(userID: String): List<Story> =
-        StoryRepo.getStoryCollection(userID).get().await().toObjects<Story>()
+    override suspend fun getStoriesForUID(userID: String): List<Story> {
+        // FIX #2: filter expired stories (was missing — loadStories had the filter
+        // but getStoriesForUID didn't, so expired stories leaked through this path).
+        val now = System.currentTimeMillis()
+        return StoryRepo.getStoryCollection(userID)
+            .get().await()
+            .toObjects<Story>()
+            .filter { it.expiresAt > now }
+    }
 
 
     override fun getMyStoryPreview() = callbackFlow {
@@ -220,75 +230,63 @@ class StoryRepoImpl(
 
 
     override suspend fun deleteStory(storyID: String): Boolean {
+        // FIX #3: Simplified — client only does the Firestore Story doc delete +
+        // optimistic story_details update inside a runTransaction. The Cloud
+        // Function `onStoryDelete` handles ALL the cascading cleanup
+        // (story_details recompute, viewer subcollection sweep, Storage object
+        // delete). This avoids the non-atomic multi-step sequence that could
+        // leave inconsistent state if any step failed mid-way.
         val uid = Firebase.auth.uid ?: return false
 
         val storyRef = StoryRepo.getStoryCollection(uid).document(storyID)
         val storyDetailsRef = StoryRepo.getStoryDetailsCollection(uid)
-        val storageRef = Firebase.storage.getReference("${StoryRepo.STORY}/$uid/$storyID")
-        val viewersCollectionRef = StoryRepo.getStoryViewersSubcollection(uid, storyID)
 
-        var success = true
-
-        // 1. Atomic Firestore: decrement storyCount via FieldValue.increment(-1).
-        //    If the count would go to 0 (or below), delete the entire story_details doc.
-        try {
-            // First check if this is the last story — if so, delete the doc.
-            // Otherwise, decrement + recompute previewImage from the new latest.
-            val storyDoc = storyRef.get().await()
-            if (!storyDoc.exists()) {
-                Timber.w("deleteStory: story $storyID doesn't exist (already deleted?)")
-                return false
-            }
-
-            val remaining = StoryRepo.getStoryCollection(uid)
+        // Pre-compute the new latest story (outside the transaction — this is
+        // a read that happens before the transaction's writes).
+        val remaining = try {
+            StoryRepo.getStoryCollection(uid)
                 .whereEqualTo(Story::authorUID.name, uid)
                 .get().await()
                 .toObjects<Story>()
-                .filter { it.storyID != storyID }
-
-            if (remaining.isEmpty()) {
-                // Last story — delete the entire story_details doc.
-                storyDetailsRef.delete().await()
-            } else {
-                // Recompute previewImage + timeUploaded from the new latest remaining story.
-                val newLatest = remaining.maxByOrNull { it.timeUploaded }
-                if (newLatest != null) {
-                    storyDetailsRef.update(
-                        mapOf(
-                            "storyCount" to FieldValue.increment(-1),
-                            "previewImage" to newLatest.imageUrl,
-                            "timeUploaded" to newLatest.timeUploaded
-                        )
-                    ).await()
-                }
-            }
-
-            // 2. Delete the Story doc itself.
-            storyRef.delete().await()
-
-            // 3. Delete the viewer subcollection (one doc per viewer). Firestore
-            //    doesn't support collection-level deletes from the client; we
-            //    iterate the docs and delete each. For very large viewer lists,
-            //    a Cloud Function bulk-delete is preferable. For now this is
-            //    acceptable (most stories get <100 viewers).
-            try {
-                val viewers = viewersCollectionRef.get().await()
-                viewers.documents.forEach { it.reference.delete().await() }
-            } catch (e: Exception) {
-                Timber.e(e, "deleteStory: viewer subcollection cleanup failed (non-fatal)")
-                // non-fatal — the story is gone, the viewer docs will be orphaned
-                // until the scheduled Cloud Function sweeps them.
-            }
-
-            // 4. Delete the Storage object.
-            storageRef.delete().await()
-
+                .filter { it.storyID != storyID && it.expiresAt > System.currentTimeMillis() }
         } catch (e: Exception) {
-            Timber.e(e, "deleteStory: failed for storyID=$storyID")
-            success = false
+            Timber.e(e, "deleteStory: failed to read remaining stories")
+            return false
         }
 
-        return success
+        // Atomic Firestore transaction: update story_details + delete Story doc
+        // in a single operation. If either fails, neither is applied.
+        return try {
+            Firebase.firestore.runTransaction { transaction ->
+                // Read the storyDetails doc to check if it exists.
+                val storyDetailsSnap = transaction.get(storyDetailsRef)
+
+                if (remaining.isEmpty()) {
+                    // Last story — delete story_details entirely.
+                    if (storyDetailsSnap.exists()) {
+                        transaction.delete(storyDetailsRef)
+                    }
+                } else {
+                    // Decrement count + update preview to the new latest.
+                    val newLatest = remaining.maxByOrNull { it.timeUploaded }
+                    val updateMap = mutableMapOf<String, Any?>(
+                        "storyCount" to FieldValue.increment(-1)
+                    )
+                    if (newLatest != null) {
+                        updateMap["previewImage"] = newLatest.imageUrl
+                        updateMap["timeUploaded"] = newLatest.timeUploaded
+                    }
+                    transaction.set(storyDetailsRef, updateMap, SetOptions.merge())
+                }
+
+                // Delete the Story doc itself.
+                transaction.delete(storyRef)
+            }.await()
+            true
+        } catch (e: Exception) {
+            Timber.e(e, "deleteStory: transaction failed for storyID=$storyID")
+            false
+        }
     }
 
 

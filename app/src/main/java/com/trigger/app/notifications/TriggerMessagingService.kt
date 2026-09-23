@@ -37,24 +37,29 @@ class TriggerMessagingService : FirebaseMessagingService() {
         super.onNewToken(token)
         Timber.d("FCM token refreshed: $token")
 
-        // Write the new token to public_users/{uid}.fcmToken so the Cloud
-        // Function can look it up to send pushes. Using public_users (not users)
-        // because the Firestore rules allow owner write on public_users.
+        // FIX #7: Write FCM token to users/{uid}/deviceTokens/{token} (owner-only)
+        // instead of public_users/{uid}.fcmToken (public-readable). The old
+        // location leaked device push tokens to any signed-in user.
         val uid = Firebase.auth.currentUser?.uid ?: return
+
+        // Use the token itself as the document ID — idempotent (re-writing the
+        // same token just re-sets the same doc).
+        Firebase.firestore
+            .collection("users")
+            .document(uid)
+            .collection("deviceTokens")
+            .document(token)
+            .set(mapOf("token" to token, "updatedAt" to System.currentTimeMillis()))
+            .addOnFailureListener { e ->
+                Timber.e(e, "Failed to write FCM token to deviceTokens")
+            }
+
+        // Also clean up the old fcmToken from public_users if it exists.
         Firebase.firestore
             .collection("public_users")
             .document(uid)
-            .update("fcmToken", token)
-            .addOnFailureListener { e ->
-                // If the doc doesn't exist yet (e.g., user just signed up),
-                // create it with just the token. The full projection will be
-                // filled in by UserRepoImpl.createUser.
-                Firebase.firestore
-                    .collection("public_users")
-                    .document(uid)
-                    .set(mapOf("fcmToken" to token, "uid" to uid), com.google.firebase.firestore.SetOptions.merge())
-                    .addOnFailureListener { Timber.e(it, "Failed to write FCM token") }
-            }
+            .update("fcmToken", com.google.firebase.firestore.FieldValue.delete())
+            .addOnFailureListener { /* non-fatal — field may not exist */ }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

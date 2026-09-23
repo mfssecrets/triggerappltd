@@ -122,6 +122,7 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.functions)
 
     // DI using Koin
     implementation(platform(libs.koin.bom))

@@ -5,6 +5,7 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.toObject
+import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.ktx.storage
@@ -174,113 +175,34 @@ class UserRepoImpl : UserRepo {
 
 
     override suspend fun deleteUserCompletely(uid: String, username: String): Boolean {
-        var success = true
+        // FIX #5: Call the callable Cloud Function `deleteUserAccount` instead
+        // of doing client-side cleanup. The old implementation did Firestore +
+        // Storage cleanup from the client (subject to permission rules + race
+        // conditions) and tried to delete the Auth user from the client (which
+        // throws FirebaseAuthRecentLoginRequiredException if signed in >5min ago).
+        // The Cloud Function has admin privileges (bypasses all rules) and
+        // calls auth.deleteUser(uid) server-side (no recent-login requirement).
+        //
+        // The old Firestore trigger `onDeleteUser` (onDocumentDeleted) has been
+        // REMOVED — accidental Firestore doc deletion no longer triggers Auth
+        // account deletion. Account deletion only happens when the client
+        // explicitly calls this callable function.
+        return try {
+            val result = Firebase.functions
+                .getHttpsCallable("deleteUserAccount")
+                .call(mapOf("uid" to uid, "username" to username))
+                .await()
 
-        // Helper that swallows per-step errors so the rest of the pipeline still runs.
-        suspend fun step(name: String, block: suspend () -> Unit) {
-            try {
-                block()
-            } catch (e: Exception) {
-                Timber.e(e, "deleteUserCompletely: $name failed for uid=$uid")
-                success = false
-            }
+            // Sign out locally regardless of the function result.
+            Firebase.auth.signOut()
+
+            val data = result.data as? Map<*, *>
+            data?.get("success") == true
+        } catch (e: Exception) {
+            Timber.e(e, "deleteUserCompletely: Cloud Function call failed")
+            // Sign out anyway — the user wants to leave.
+            Firebase.auth.signOut()
+            false
         }
-
-        // 1. Disable all chats where this user is a participant (set isDisabled=true)
-        step("disableChatsForUser") {
-            val chatsAsFirst = firestore.collection("chat_details")
-                .whereEqualTo("firstMiniUser.uid", uid)
-                .get().await()
-            val chatsAsSecond = firestore.collection("chat_details")
-                .whereEqualTo("secondMiniUser.uid", uid)
-                .get().await()
-
-            val allChatDocs = (chatsAsFirst.documents + chatsAsSecond.documents)
-                .distinctBy { it.id }
-
-            allChatDocs.forEach { doc ->
-                val chatID = doc.id
-                val otherUid =
-                    if (doc.getString("firstMiniUser.uid") == uid)
-                        doc.getString("secondMiniUser.uid")
-                    else
-                        doc.getString("firstMiniUser.uid")
-
-                // Set isDisabled on the chat_details doc
-                firestore.collection("chat_details").document(chatID)
-                    .update("isDisabled", true).await()
-
-                // Remove the OTHER participant's personalized_chats entry for this chat
-                if (otherUid != null) {
-                    firestore.collection("personalized_chats")
-                        .document("FILLER")
-                        .collection(otherUid)
-                        .document(chatID)
-                        .delete().await()
-                }
-            }
-
-            // Remove the user's own personalized_chats subcollection entirely
-            val ownPersonalizedChats = firestore.collection("personalized_chats")
-                .document("FILLER")
-                .collection(uid)
-                .get().await()
-            ownPersonalizedChats.documents.forEach { d ->
-                d.reference.delete().await()
-            }
-        }
-
-        // 2. Remove the user's blockedUsers subcollection
-        step("removeBlockedUsers") {
-            val blocked = firestore.collection("users")
-                .document(uid)
-                .collection("blockedUsers")
-                .get().await()
-            blocked.documents.forEach { d -> d.reference.delete().await() }
-        }
-
-        // 3. Remove the user's stories
-        step("removeStories") {
-            firestore.collection("story_details").document(uid).delete().await()
-
-            val storyContent = firestore.collection("story")
-                .document("content")
-                .collection(uid)
-                .get().await()
-            storyContent.documents.forEach { d -> d.reference.delete().await() }
-        }
-
-        // 4. Remove the Storage profile pic
-        step("removeStorageProfilePic") {
-            getStorageRefForProfilePic(uid).delete().await()
-        }
-
-        // 5. Remove the `users/{uid}` doc
-        step("removeUsersDoc") {
-            getUserProfileReference(uid).delete().await()
-        }
-
-        // 6. Remove the `public_users/{uid}` projection doc
-        step("removePublicUsersDoc") {
-            getPublicUserProfileReference(uid).delete().await()
-        }
-
-        // 7. Free the `usernames/{username}` reservation (rules require caller == owner)
-        step("removeUsernameReservation") {
-            if (username.isNotEmpty()) {
-                getUsernameReference(username).delete().await()
-            }
-        }
-
-        // 8. Finally, delete the Firebase Auth user record (prevents "zombie"
-        //    state on next launch where uid != null but no profile exists)
-        step("deleteAuthUser") {
-            Firebase.auth.currentUser?.delete()?.await()
-        }
-
-        // Sign out locally so any cached Auth state is cleared
-        Firebase.auth.signOut()
-
-        return success
     }
 }

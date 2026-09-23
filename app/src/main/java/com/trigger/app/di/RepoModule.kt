@@ -33,8 +33,12 @@ val repoModule = module {
     single<UserDetailsRepo> { UserDetailsRepoImpl() }
     single<ContactsRepo> { ContactsRepoImpl(get(), get()) }
 
-    // Auth
-    single<AuthRepo> { AuthRepoImpl() }
+    // Auth — factory (NOT single): AuthRepoImpl holds a per-VM isActive flag
+    // that must not be shared across VMs. Each VM gets its own repo instance,
+    // so cancelling one VM's repo (isActive=false) doesn't affect the next.
+    // Even though EnterCodeViewModel currently uses the default-arg constructor,
+    // factory is the safe-by-default choice if anyone refactors to Koin injection.
+    factory<AuthRepo> { AuthRepoImpl() }
 
     // Moderation
     single<ModerationRepo> { ModerationRepoImpl() }

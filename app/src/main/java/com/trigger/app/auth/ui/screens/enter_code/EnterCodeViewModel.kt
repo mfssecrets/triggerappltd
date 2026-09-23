@@ -86,6 +86,11 @@ class EnterCodeViewModel(
         authRepo.authenticateWithNumber(
             phoneNumber = phoneNumber,
             activity = act,
+            // Pass the VM's scope so the Firebase callback can launch its
+            // signInWithCredential coroutine without runBlocking. When this
+            // VM is cleared, the scope is cancelled → in-flight signIn is
+            // cancelled → no stale onResult.
+            coroutineScope = viewModelScope,
             onCodeSent = { verificationId, resendToken ->
                 // FIX #5: Store the session in the VM.
                 verificationSession = VerificationSession(verificationId, resendToken)

@@ -2,6 +2,7 @@ package com.trigger.app.auth.repo
 
 import android.app.Activity
 import com.google.firebase.auth.PhoneAuthProvider
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * Contains all methods used in authenticating {registering} the user.
@@ -10,6 +11,11 @@ import com.google.firebase.auth.PhoneAuthProvider
  * FIX #5: submitSMSCode takes verificationId from the caller (was stored in repo).
  * FIX #6: Error callback passes a human-readable message (was Boolean false).
  * FIX #7: Auto-verification and manual OTP converge into the same onResult callback.
+ * FIX #8: authenticateWithNumber takes a [coroutineScope] so the Firebase callback
+ *         can launch its signInWithCredential coroutine on the VM's viewModelScope
+ *         instead of runBlocking the callback thread. When the VM is cleared, the
+ *         scope is cancelled → the in-flight signIn coroutine is cancelled → no
+ *         stale state updates.
  */
 interface AuthRepo {
 
@@ -21,6 +27,9 @@ interface AuthRepo {
      *
      * @param phoneNumber    E.164 formatted phone number (with country code).
      * @param activity       The calling Activity (non-nullable — Firebase requires it for reCAPTCHA).
+     * @param coroutineScope The caller's coroutine scope (usually viewModelScope). Used to launch
+     *                       the auto-verification signIn coroutine so it is automatically cancelled
+     *                       when the scope (VM) is cleared. NO runBlocking.
      * @param onCodeSent     Invoked when Firebase sends the SMS. Passes the verificationId +
      *                       resendToken so the VM can store them in a VerificationSession.
      * @param onResult       Invoked on success or failure. (true, null) = success.
@@ -31,6 +40,7 @@ interface AuthRepo {
     fun authenticateWithNumber(
         phoneNumber: String,
         activity: Activity,
+        coroutineScope: CoroutineScope,
         onCodeSent: (verificationId: String, resendToken: PhoneAuthProvider.ForceResendingToken?) -> Unit,
         onResult: (success: Boolean, errorMessage: String?) -> Unit,
         resendToken: PhoneAuthProvider.ForceResendingToken? = null

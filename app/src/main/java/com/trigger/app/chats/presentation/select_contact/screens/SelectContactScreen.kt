@@ -108,7 +108,19 @@ fun SelectContactScreen(
             ContactPreview(
                 contact = contact,
                 openProfilePic = {},
-                startConversation = { viewModel.startOrResumeConversation(contact) }
+                startConversation = { viewModel.startOrResumeConversation(contact) },
+                viewProfile = {
+                    // FIX: tap → view the other user's profile via ChatDetails
+                    // route. chatId is empty (no chat yet) — the screen handles
+                    // this case by showing the user's profile + a "Start chat"
+                    // affordance.
+                    navController.navigateSafely(
+                        com.trigger.app.core.presentation.ui.ChatDetails(
+                            chatId = "",
+                            otherUserId = contact.uid
+                        )
+                    )
+                }
             )
         }
 
@@ -156,6 +168,17 @@ fun SelectContactScreen(
                         startConversation = {
                             Timber.d("Navigating with contact as $contact")
                             viewModel.startOrResumeConversation(contact)
+                        },
+                        viewProfile = {
+                            // FIX: tap → view the other user's profile via
+                            // ChatDetails route (chatId empty — screen shows
+                            // user info + a "Start chat" affordance).
+                            navController.navigateSafely(
+                                com.trigger.app.core.presentation.ui.ChatDetails(
+                                    chatId = "",
+                                    otherUserId = contact.uid
+                                )
+                            )
                         }
                     )
                 }

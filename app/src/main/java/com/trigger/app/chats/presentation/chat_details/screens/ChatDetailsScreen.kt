@@ -143,8 +143,29 @@ fun ChatDetailsScreen(
                         onMessage = {
                             navController.popBackStack()
                         },
-                        onAudioCall = { showComingSoonPopup = true },
-                        onVideoCall = { showComingSoonPopup = true }
+                        onAudioCall = {
+                            // FIX: real call initiation flow. Was: showComingSoonPopup.
+                            // Now: navigate to OutgoingCallScreen — CallViewModel
+                            // creates a calls/{callID} doc with status=INITIATED,
+                            // Cloud Function onCallInitate sends FCM to the callee,
+                            // callee sees IncomingCallScreen.
+                            navController.navigateSafely(
+                                com.trigger.app.core.presentation.ui.OutgoingCall(
+                                    callID = "",  // CallViewModel will create the doc + fill this in
+                                    calleeID = otherUserID,
+                                    callType = com.trigger.app.calls.domain.CallType.AUDIO.firebaseKey
+                                )
+                            )
+                        },
+                        onVideoCall = {
+                            navController.navigateSafely(
+                                com.trigger.app.core.presentation.ui.OutgoingCall(
+                                    callID = "",
+                                    calleeID = otherUserID,
+                                    callType = com.trigger.app.calls.domain.CallType.VIDEO.firebaseKey
+                                )
+                            )
+                        }
                     )
 
 

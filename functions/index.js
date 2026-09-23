@@ -353,3 +353,82 @@ exports.lookupUsersByPhone = onCall(
     return { users: matchedUsers };
   }
 );
+
+
+// ============================================================================
+// 7. onCallInitiate — FCM push to callee when a new call doc is created
+//    Listens to: calls/{callID} ( onCreate ).
+//    Sends a high-priority FCM with type="call" + callID + callerID + callType
+//    to ALL the callee's device tokens (users/{calleeID}/deviceTokens).
+//    The callee's TriggerMessagingService sees type="call" and launches
+//    IncomingCallScreen as a full-screen intent.
+// ============================================================================
+exports.onCallInitiate = onDocumentCreated(
+  "calls/{callID}",
+  async (event) => {
+    const newCall = event.data?.data();
+    if (!newCall) return;
+
+    const calleeID = newCall.calleeID;
+    const callerID = newCall.callerID;
+    const callType = newCall.callType || "AUDIO";
+    const callID = event.params.callID;
+
+    if (!calleeID || !callerID) {
+      console.warn("onCallInitiate: missing calleeID or callerID");
+      return;
+    }
+
+    // Read caller's name + profilePic from public_users projection.
+    let callerName = "Unknown";
+    let callerProfilePic = null;
+    try {
+      const callerDoc = await db.doc(`public_users/${callerID}`).get();
+      callerName = callerDoc.data()?.name || "Unknown";
+      callerProfilePic = callerDoc.data()?.profilePic || null;
+    } catch (e) {
+      console.warn(`onCallInitiate: failed to read caller public_users/${callerID}`, e);
+    }
+
+    // Read ALL the callee's device tokens (multi-device support).
+    const tokensSnap = await db.collection(`users/${calleeID}/deviceTokens`).get();
+    const tokens = tokensSnap.docs.map(d => d.id);
+    if (tokens.length === 0) {
+      console.log(`onCallInitiate: callee ${calleeID} has no device tokens — no FCM sent`);
+      return;
+    }
+
+    // Send the high-priority call FCM to every device.
+    for (const token of tokens) {
+      const payload = {
+        token: token,
+        // NO `notification` block — we use `data` only + a high-priority
+        // Android channel so the client's onMessageReceived always fires
+        // (not just when the app is foregrounded). The client then shows
+        // the IncomingCallScreen as a full-screen intent.
+        data: {
+          type: "call",
+          callID: callID,
+          callerID: callerID,
+          callerName: callerName,
+          callerProfilePic: callerProfilePic || "",
+          callType: callType
+        },
+        android: {
+          priority: "high",
+          // Use the CALLS channel — must be created on the client with
+          // setBypassDnd(true) and fullScreenIntent for incoming-call UX.
+          notification: {
+            channelId: "CALLS_CHANNEL_ID",
+            priority: "max",
+            visibility: "public",
+            title: `Incoming ${callType.toLowerCase()} call`,
+            body: `${callerName} is calling`
+          }
+        }
+      };
+      try { await admin.messaging().send(payload); }
+      catch (e) { console.warn(`onCallInitiate: FCM send failed for token ${token.substring(0, 10)}...`, e); }
+    }
+  }
+);

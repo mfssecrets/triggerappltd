@@ -101,8 +101,6 @@ object Groups
 object Calls
 
 @Serializable
-object Stories
-@Serializable
 data class ViewStory(val authorID: String)
 
 
@@ -114,6 +112,51 @@ data class ActualChat(val chatId: String?, val newContact: String?)
 
 @Serializable
 data class ChatDetails(val chatId: String, val otherUserId: String)
+
+
+// ============================================================================
+// Call routes
+//
+// Call lifecycle (state machine):
+//   Caller taps "Call" button in ChatDetailsScreen
+//     → CallViewModel creates calls/{callID} with status=INITIATED
+//     → navigateSafely(OutgoingCall(callID, calleeID, callType))
+//     → Cloud Function onCallInitate sends FCM to callee
+//
+//   Caldee receives FCM
+//     → TriggerMessagingService sees type="call"
+//     → launches IncomingCallScreen via fullScreenIntent
+//
+//   Callee taps Accept
+//     → calls/{callID}.status = ANSWERED
+//     → both sides navigate to InCallScreen
+//
+//   Either side taps Hangup / Cancel
+//     → calls/{callID}.status = COMPLETED / DECLINED / MISSED
+//     → both sides dismiss call screens
+// ============================================================================
+
+@Serializable
+data class OutgoingCall(
+    val callID: String,
+    val calleeID: String,
+    val callType: String  // "AUDIO" or "VIDEO"
+)
+
+@Serializable
+data class IncomingCall(
+    val callID: String,
+    val callerID: String,
+    val callType: String  // "AUDIO" or "VIDEO"
+)
+
+@Serializable
+data class InCall(
+    val callID: String,
+    val otherUserID: String,
+    val callType: String  // "AUDIO" or "VIDEO"
+)
+
 
 
 @Parcelize

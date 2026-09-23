@@ -1,5 +1,6 @@
 package com.trigger.app.di
 
+import com.trigger.app.calls.ui.CallViewModel
 import com.trigger.app.chats.presentation.actual_chat.screens.ActualChatViewModel
 import com.trigger.app.chats.presentation.all_chats.screens.AllChatsViewModel
 import com.trigger.app.chats.presentation.select_contact.screens.SelectContactsViewModel
@@ -25,4 +26,9 @@ val viewModelModule = module {
 
     // Notifications feed VM — listens to chat_details + story replies + missed calls.
     viewModel { NotificationsViewModel(get(), get(), get()) }
+
+    // Call VM — manages the call state machine across OutgoingCall /
+    // IncomingCall / InCall screens. Single VM shared across the three
+    // screens (same callID → same VM scope).
+    viewModel { CallViewModel(get()) }
 }

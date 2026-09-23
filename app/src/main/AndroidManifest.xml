@@ -8,6 +8,15 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Required on Android 14+ for the incoming-call notification to bypass
+         the lock screen and show IncomingCallScreen as a full-screen intent. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Required on Android 14+ when the foreground service hosts an active
+         call session (keeps the WebRTC peer connection alive while the app
+         is backgrounded — TODO: not used yet, needed when real audio is added). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+
     <!-- Required to start a foreground service on API 26+ (Oreo). Without this,
          startForegroundService() throws SecurityException at runtime. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

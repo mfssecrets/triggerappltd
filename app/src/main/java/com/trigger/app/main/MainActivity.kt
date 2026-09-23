@@ -41,6 +41,9 @@ import com.trigger.app.chats.presentation.all_chats.screens.AllChatsScreen
 import com.trigger.app.chats.presentation.chat_details.screens.ChatDetailsScreen
 import com.trigger.app.chats.presentation.select_contact.screens.SelectContactScreen
 import com.trigger.app.chats.presentation.message_requests.MessageRequestsScreen
+import com.trigger.app.calls.ui.screens.IncomingCallScreen
+import com.trigger.app.calls.ui.screens.InCallScreen
+import com.trigger.app.calls.ui.screens.OutgoingCallScreen
 import com.trigger.app.notifications.ui.screens.NotificationsScreen
 import com.trigger.app.core.presentation.ui.ActualChat
 import com.trigger.app.core.presentation.ui.AllChats
@@ -52,9 +55,12 @@ import com.trigger.app.core.presentation.ui.EnterCode
 import com.trigger.app.core.presentation.ui.EnterNumber
 import com.trigger.app.core.presentation.ui.Groups
 import com.trigger.app.core.presentation.ui.Help
+import com.trigger.app.core.presentation.ui.InCall
+import com.trigger.app.core.presentation.ui.IncomingCall
 import com.trigger.app.core.presentation.ui.MyProfile
 import com.trigger.app.core.presentation.ui.Notifications
 import com.trigger.app.core.presentation.ui.MessageRequests
+import com.trigger.app.core.presentation.ui.OutgoingCall
 import com.trigger.app.core.presentation.ui.SelectContact
 import com.trigger.app.core.presentation.ui.SendImage
 import com.trigger.app.core.presentation.ui.SendImageIn
@@ -339,6 +345,34 @@ class MainActivity : ComponentActivity() {
                                     otherUserID = args.otherUserId,
                                     navController = navController,
                                     updateStatusBar = viewModel::updateStatusBar
+                                )
+                            }
+
+                            composable<OutgoingCall> {
+                                val args = it.toRoute<OutgoingCall>()
+                                OutgoingCallScreen(
+                                    callID = args.callID,
+                                    calleeID = args.calleeID,
+                                    callType = args.callType,
+                                    navController = navController
+                                )
+                            }
+                            composable<IncomingCall> {
+                                val args = it.toRoute<IncomingCall>()
+                                IncomingCallScreen(
+                                    callID = args.callID,
+                                    callerID = args.callerID,
+                                    callType = args.callType,
+                                    navController = navController
+                                )
+                            }
+                            composable<InCall> {
+                                val args = it.toRoute<InCall>()
+                                InCallScreen(
+                                    callID = args.callID,
+                                    otherUserID = args.otherUserID,
+                                    callType = args.callType,
+                                    navController = navController
                                 )
                             }
 

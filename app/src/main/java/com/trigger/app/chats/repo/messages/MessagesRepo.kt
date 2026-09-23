@@ -55,4 +55,7 @@ interface MessagesRepo {
      * 2) if it was the last message. Update last message in ChatDetails
      */
     suspend fun unsendMessage(chatID: String, messageID: String): Boolean
+
+    // Re-upload a failed NOT_SENT message (image/audio upload that failed).
+    suspend fun retrySendMessage(chatID: String, messageID: String): Boolean
 }

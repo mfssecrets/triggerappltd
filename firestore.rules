@@ -221,12 +221,25 @@ service cloud.firestore {
         && request.resource.data.messageStatus is string;
 
       // Update: only participants. BLOCK senderID mutation — otherwise the
-      // receiver could flip senderID to their own uid and fake a message as
-      // if it came from the other party. messageType / messageStatus / wasEdited
-      // updates remain allowed (for editing, unsend, mark-as-received/opened).
+      // FIX #8: Sender-only edit enforcement. The sender can update any field
+      // (messageType for editing, wasEdited, etc.). The receiver can ONLY
+      // update messageStatus (mark RECEIVED/OPENED) — all other fields must
+      // remain unchanged. This prevents a malicious receiver from editing
+      // the sender's message content.
       allow update: if isChatParticipant(chatID)
         && request.resource.data.senderID == resource.data.senderID
-        && request.resource.data.messageID == resource.data.messageID;
+        && request.resource.data.messageID == resource.data.messageID
+        && (
+          // Sender can update any field
+          resource.data.senderID == uid()
+          ||
+          // Non-sender can ONLY change messageStatus — all other fields unchanged
+          (
+            request.resource.data.messageType == resource.data.messageType
+            && request.resource.data.wasEdited == resource.data.wasEdited
+            && request.resource.data.timeSent == resource.data.timeSent
+          )
+        );
 
       // Delete: only the sender of the message (unsend). Receiver cannot delete.
       allow delete: if isChatParticipant(chatID)

@@ -123,20 +123,21 @@ class UnreadMessagesRepoImpl(
         getChatDetailsRef(chatID)
             .update(Chat::lastMessageStatus.name, MessageStatus.RECEIVED)
 
+        // FIX #4: Use writeBatch instead of forEach { update() } — 1 commit for
+        // all messages instead of N individual Firestore writes.
         val messagesRef = ChatRepo.getMessagesCollectionRef(chatID)
+        val batch = Firebase.firestore.batch()
         messages.forEach {
-            messagesRef.document(it.messageID)
-                .update(Message::messageStatus.name, MessageStatus.RECEIVED)
+            batch.update(
+                messagesRef.document(it.messageID),
+                Message::messageStatus.name, MessageStatus.RECEIVED
+            )
         }
+        batch.commit()
     }
 
 
     override suspend fun updateMessagesAsOpened(chatID: String?) {
-        /**
-         * Mark all messages as opened if:
-         * 1) it was not opened before AND
-         * 2) it is from the other person
-         */
         val messageIDS = ChatRepo.getMessagesCollectionRef(chatID ?: return)
             .whereIn(
                 Message::messageStatus.name,
@@ -148,10 +149,17 @@ class UnreadMessagesRepoImpl(
             .toObjects<Message>()
             .map { it.messageID }
 
-        messageIDS.forEach { messageId ->
-            ChatRepo.getMessagesCollectionRef(chatID)
-                .document(messageId)
-                .update(Message::messageStatus.name, MessageStatus.OPENED)
+        // FIX #4: Use writeBatch — 1 commit for all message-status updates.
+        if (messageIDS.isNotEmpty()) {
+            val messagesRef = ChatRepo.getMessagesCollectionRef(chatID)
+            val batch = Firebase.firestore.batch()
+            messageIDS.forEach { messageId ->
+                batch.update(
+                    messagesRef.document(messageId),
+                    Message::messageStatus.name, MessageStatus.OPENED
+                )
+            }
+            batch.commit().await()
         }
     }
 

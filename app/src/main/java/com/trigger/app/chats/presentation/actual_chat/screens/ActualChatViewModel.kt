@@ -51,7 +51,10 @@ class ActualChatViewModel(
     private val messagesRepo: MessagesRepo = MessagesRepoImpl(chatRepo),
     private val contactsRepo: ContactsRepo,
     private val audioRecorder: AudioRecorder = AndroidAudioRecorder(),
-    private val audioPlayer: AudioPlayer = AndroidAudioPlayer()
+    private val audioPlayer: AudioPlayer = AndroidAudioPlayer(),
+    // Offline-first: when injected, messages are read from Room cache (instant)
+    // with Firestore sync in background. Falls back to direct Firestore flow.
+    private val messageSyncRepository: com.trigger.app.local.MessageSyncRepository? = null
 ) : ViewModel() {
 
     private val _textMessage = MutableStateFlow(TextFieldValue(""))
@@ -141,7 +144,9 @@ class ActualChatViewModel(
         if (chatID != null) {
             Timber.d("chatID is $chatID")
 
-            messagesRepo.getMessagesFromChatID(chatID!!)
+            // Offline-first: read from Room cache (instant) with Firestore sync
+            // in background. Falls back to direct Firestore flow if sync repo is null.
+            (messageSyncRepository?.syncMessages(chatID!!) ?: messagesRepo.getMessagesFromChatID(chatID!!))
                 .onEach { // TODO: Improve this coz this is TERRIBLEEEEEE :)
                     Timber.d("chatRepo.getMessagesFromChatID(chatID!!).collect is $it")
 

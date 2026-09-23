@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,7 +78,7 @@ fun AllChatsScreen(
     coroutineScope: CoroutineScope,
     updateStatusBar: (StatusBars) -> Unit
 ) {
-    val viewModel = viewModel<AllChatsViewModel>()
+    val viewModel: AllChatsViewModel = koinViewModel()
     val context = LocalContext.current
 
     val chats by viewModel.chats.collectAsState(initial = null)

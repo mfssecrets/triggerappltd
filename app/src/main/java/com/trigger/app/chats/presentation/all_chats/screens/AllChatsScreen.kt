@@ -73,6 +73,7 @@ import com.trigger.app.core.presentation.ui.theme.QuickSand
 import com.trigger.app.core.presentation.ui.theme.StatusBars
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 @Composable
 fun AllChatsScreen(
@@ -95,6 +96,36 @@ fun AllChatsScreen(
     // Reset the status bar color to the background color
     LaunchedEffect(key1 = Unit) {
         updateStatusBar(StatusBars(appColors.blueCardColor, false))
+    }
+
+    // FIX: Request POST_NOTIFICATIONS on Android 13+ (API 33+). Without this,
+    // FCM push notifications are silently dropped on modern devices — the
+    // manifest declares the permission but it must be REQUESTED at runtime
+    // for the system to grant it. TriggerMessagingService.showChatMessageNotification
+    // catches the resulting SecurityException, but that just logs "POST_NOTIFICATIONS
+    // denied" — the user never sees the notification.
+    //
+    // We request it ONCE on first composition of AllChats (the screen users
+    // land on after auth). Don't block — if denied, the user can still use
+    // the app; they just won't see push notifications.
+    val postNotificationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Timber.w("POST_NOTIFICATIONS denied — push notifications won't show")
+        }
+    }
+    LaunchedEffect(key1 = Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // Only request if not already granted (avoid spamming the user).
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                LocalContext.current,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                postNotificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     // Permission launcher declared at the top of the composable so the top app bar

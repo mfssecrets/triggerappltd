@@ -172,4 +172,8 @@
     <string name="profile_pic_save_failed">Upload finished but couldn\'t save to your profile. Please try again.</string>
     <string name="profile_pic_upload_success">Profile picture updated.</string>
     <string name="ok">OK</string>
+
+    <!-- Notifications screen -->
+    <string name="no_notifications_yet">No notifications yet</string>
+    <string name="no_notifications_subtitle">When someone messages you or replies to your story, you\'ll see it here.</string>
 </resources>

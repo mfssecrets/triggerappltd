@@ -41,6 +41,7 @@ import com.trigger.app.chats.presentation.all_chats.screens.AllChatsScreen
 import com.trigger.app.chats.presentation.chat_details.screens.ChatDetailsScreen
 import com.trigger.app.chats.presentation.select_contact.screens.SelectContactScreen
 import com.trigger.app.chats.presentation.message_requests.MessageRequestsScreen
+import com.trigger.app.notifications.ui.screens.NotificationsScreen
 import com.trigger.app.core.presentation.ui.ActualChat
 import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.Calls
@@ -293,7 +294,13 @@ class MainActivity : ComponentActivity() {
                                 CallsScreen(navController = navController)
                             }
                             composable<Notifications> {
-                                MessageRequestsScreen(navController)
+                                // FIX: was routing to MessageRequestsScreen — that's
+                                // a DIFFERENT feature (incoming chat requests from
+                                // non-contacts). Notifications tab now routes to the
+                                // dedicated NotificationsScreen which will hold the
+                                // notification feed (new messages, missed calls,
+                                // story replies, etc.).
+                                NotificationsScreen(navController)
                             }
 
 

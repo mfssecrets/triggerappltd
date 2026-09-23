@@ -4,7 +4,9 @@ import android.Manifest
 import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +57,7 @@ import com.trigger.app.R
 import com.trigger.app.chats.presentation.all_chats.components.ChatPreview
 import com.trigger.app.chats.presentation.view_profile_pic.ControlBlurOnScreen
 import com.trigger.app.core.presentation.ui.ActualChat
+import com.trigger.app.chats.domain.Chat
 import com.trigger.app.core.presentation.ui.SelectContact
 import com.trigger.app.core.presentation.ui.MessageRequests
 import com.trigger.app.core.presentation.ui.Groups

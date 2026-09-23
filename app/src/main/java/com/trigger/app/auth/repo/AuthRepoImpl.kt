@@ -37,10 +37,9 @@ class AuthRepoImpl : AuthRepo {
     @Volatile
     private var isActive = true
 
-    fun cancel() {
+    override fun cancel() {
         isActive = false
     }
-
     override fun authenticateWithNumber(
         phoneNumber: String,
         activity: Activity,

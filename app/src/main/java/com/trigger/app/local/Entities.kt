@@ -24,7 +24,7 @@ data class MessageEntity(
     val serverTime: Long? = null
 )
 
-@Entity(tableName = "chats", indices = [Index("chatId"), Index("timeOfLastMessage")])
+@Entity(tableName = "chats", indices = [Index("chatID"), Index("timeOfLastMessage")])
 data class ChatEntity(
     @PrimaryKey val chatID: String,
     val firstMiniUserUid: String,

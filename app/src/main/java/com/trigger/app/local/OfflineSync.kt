@@ -1,6 +1,7 @@
 package com.trigger.app.local
 
 import android.content.Context
+import com.trigger.app.chats.domain.Chat
 import com.trigger.app.chats.domain.Message
 import com.trigger.app.chats.domain.MessageStatus
 import com.trigger.app.chats.repo.chats.ChatRepo
@@ -19,7 +20,6 @@ import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.ktx.storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.trySend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
@@ -78,7 +78,7 @@ fun ChatEntity.toChat() = Chat(
     lastMessageSender = lastMessageSender,
     lastMessageStatus = lastMessageStatus?.let { try { MessageStatus.valueOf(it) } catch (_: Exception) { null } },
     timeOfLastMessage = timeOfLastMessage,
-    lastMessageType = lastMessageType,
+    lastMessageType = lastMessageType ?: emptyMap(),
     isDisabled = isDisabled
 )
 

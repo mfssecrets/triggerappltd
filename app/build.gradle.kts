@@ -101,6 +101,10 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    // Extended icons (Mic, MicOff, VolumeUp, VolumeOff, CallEnd, etc.) — used
+    // by call screens. Without this, Icons.Rounded.Mic / CallEnd etc. fail to
+    // resolve at compile time.
+    implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.runtime)
     implementation(libs.androidx.runtime.livedata)
 

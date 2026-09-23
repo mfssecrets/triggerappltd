@@ -40,6 +40,7 @@ import com.trigger.app.core.presentation.ui.AllChats
 import com.trigger.app.core.presentation.ui.components.DefaultScreen
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.navigateSafelyAndPopTo
+import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.theme.Poppins
 import com.trigger.app.core.presentation.ui.theme.QuickSand
 import org.koin.androidx.compose.koinViewModel

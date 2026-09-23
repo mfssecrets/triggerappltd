@@ -36,7 +36,7 @@ import com.trigger.app.calls.ui.CallViewModel
 import com.trigger.app.core.presentation.ui.InCall
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.navigateSafely
-import org.koin.androidx.viewmodel.compose.androidxViewModel
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * Incoming call screen — callee side.
@@ -59,7 +59,7 @@ fun IncomingCallScreen(
     callType: String,
     navController: NavController
 ) {
-    val viewModel: CallViewModel = androidxViewModel()
+    val viewModel: CallViewModel = koinViewModel()
 
     // Callee-side entry — load the call doc + start listening.
     LaunchedEffect(callID) {
@@ -79,11 +79,9 @@ fun IncomingCallScreen(
             CallStatus.ANSWERED -> {
                 // Both sides navigate to InCallScreen.
                 val s = state ?: return@LaunchedEffect
-                navController.navigateSafely(
+                navController.navigate(
                     InCall(callID = s.callID, otherUserID = s.otherUserID, callType = s.callType.firebaseKey)
-                ) {
-                    popUpTo(callID.hashCode()) { inclusive = true }
-                }
+                )
             }
             CallStatus.DECLINED, CallStatus.MISSED, CallStatus.COMPLETED, CallStatus.FAILED -> {
                 kotlinx.coroutines.delay(1500)

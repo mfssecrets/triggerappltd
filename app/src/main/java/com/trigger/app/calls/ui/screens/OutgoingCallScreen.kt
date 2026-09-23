@@ -38,7 +38,7 @@ import com.trigger.app.calls.ui.CallViewModel
 import com.trigger.app.core.presentation.ui.InCall
 import com.trigger.app.core.presentation.ui.components.UserIcon
 import com.trigger.app.core.presentation.ui.navigateSafely
-import org.koin.androidx.viewmodel.compose.androidxViewModel
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * Outgoing call screen — caller side, waiting for callee to answer.
@@ -58,7 +58,7 @@ fun OutgoingCallScreen(
     callType: String,
     navController: NavController
 ) {
-    val viewModel: CallViewModel = androidxViewModel()
+    val viewModel: CallViewModel = koinViewModel()
 
     // Caller-side entry — create the call record (status=INITIATED) on first
     // composition. Idempotent: only fires once per callID (VM checks state).
@@ -79,11 +79,9 @@ fun OutgoingCallScreen(
             CallStatus.ANSWERED -> {
                 // Both sides navigate to InCallScreen.
                 val s = state ?: return@LaunchedEffect
-                navController.navigateSafely(
+                navController.navigate(
                     InCall(callID = s.callID, otherUserID = s.otherUserID, callType = s.callType.firebaseKey)
-                ) {
-                    popUpTo(callID.hashCode()) { inclusive = true }
-                }
+                )
             }
             CallStatus.DECLINED, CallStatus.MISSED, CallStatus.COMPLETED, CallStatus.FAILED -> {
                 // Brief delay so user sees the "no answer" / "declined"

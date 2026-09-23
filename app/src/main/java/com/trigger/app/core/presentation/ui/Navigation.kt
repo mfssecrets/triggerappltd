@@ -101,6 +101,9 @@ object Groups
 object Calls
 
 @Serializable
+object Stories
+
+@Serializable
 data class ViewStory(val authorID: String)
 
 

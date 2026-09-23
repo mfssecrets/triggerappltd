@@ -275,6 +275,7 @@ class CallViewModel(
             callID = callID,
             isCaller = isCaller,
             otherUserID = otherUserID,
+            myUID = Firebase.auth.uid ?: "",
             onConnected = {
                 Timber.d("WebRtcCallSession: CONNECTED")
                 _state.value = _state.value?.copy(isWebRtcConnected = true)

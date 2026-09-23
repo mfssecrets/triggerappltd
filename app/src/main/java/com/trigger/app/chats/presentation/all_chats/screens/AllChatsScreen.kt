@@ -92,6 +92,7 @@ fun AllChatsScreen(
 
 
     val appColors = LocalAppColors.current
+    val postNotificationsContext = LocalContext.current
 
     // Reset the status bar color to the background color
     LaunchedEffect(key1 = Unit) {
@@ -119,7 +120,7 @@ fun AllChatsScreen(
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             // Only request if not already granted (avoid spamming the user).
             val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                LocalContext.current,
+                postNotificationsContext,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (!granted) {

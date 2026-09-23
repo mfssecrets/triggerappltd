@@ -37,6 +37,7 @@ import com.trigger.app.core.presentation.ui.components.DefaultScreen
 import com.trigger.app.core.presentation.ui.ReportUser
 import com.trigger.app.core.presentation.ui.components.LoadingSpinner
 import com.trigger.app.core.presentation.ui.components.UserIcon
+import com.trigger.app.core.presentation.ui.navigateSafely
 import com.trigger.app.core.presentation.ui.theme.AppTheme
 import com.trigger.app.core.presentation.ui.theme.LocalAppColors
 import com.trigger.app.core.presentation.ui.theme.QuickSand

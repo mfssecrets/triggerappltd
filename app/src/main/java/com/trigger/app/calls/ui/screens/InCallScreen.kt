@@ -39,7 +39,7 @@ import androidx.navigation.NavController
 import com.trigger.app.calls.domain.CallStatus
 import com.trigger.app.calls.ui.CallViewModel
 import com.trigger.app.core.presentation.ui.components.UserIcon
-import org.koin.androidx.viewmodel.compose.androidxViewModel
+import org.koin.androidx.compose.koinViewModel
 import java.util.concurrent.TimeUnit
 
 /**
@@ -64,7 +64,7 @@ fun InCallScreen(
     callType: String,
     navController: NavController
 ) {
-    val viewModel: CallViewModel = androidxViewModel()
+    val viewModel: CallViewModel = koinViewModel()
     val state by viewModel.state.collectAsState()
 
     // Live-updating duration display.

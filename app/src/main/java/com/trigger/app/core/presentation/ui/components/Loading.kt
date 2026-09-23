@@ -23,9 +23,24 @@ import com.trigger.app.core.presentation.ui.theme.QuickSand
 
 @Composable
 fun LoadingSpinner(modifier: Modifier = Modifier) {
+    // FIX (aba6585 follow-up): the previous colors were:
+    //   containerColor = background  → card was the SAME color as the page
+    //                                 background → invisible card
+    //   color        = surface      → DarkBlue arc on DarkBlack card →
+    //                                  invisible spinner
+    //   trackColor   = background   → track was the SAME color as the card →
+    //                                  invisible track
+    // The user saw "black card on black background with dark spinner".
+    //
+    // Fix: card uses `surface` (DarkBlue) so it visually stands out from the
+    // page background (DarkBlack in dark mode, White in light mode).
+    // Spinner arc + track + text use `onSurface` (White in both modes) so
+    // they're high-contrast against the DarkBlue card.
     Card(
         modifier.fillMaxWidth(0.38f),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -35,13 +50,15 @@ fun LoadingSpinner(modifier: Modifier = Modifier) {
                 .padding(vertical = 32.dp)
         ) {
             CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.surface,
-                trackColor = MaterialTheme.colorScheme.background,
+                color = MaterialTheme.colorScheme.onSurface,
+                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
+                strokeWidth = 4.dp,
                 modifier = Modifier.size(42.dp)
             )
 
             Text(
                 text = stringResource(id = R.string.loading),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = QuickSand,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(top = 16.dp)
@@ -53,9 +70,14 @@ fun LoadingSpinner(modifier: Modifier = Modifier) {
 
 @Composable
 fun LoadingSpinnerWithProgress(progress: Int, modifier: Modifier = Modifier) {
+    // FIX: same color fix as LoadingSpinner above. Card on surface (DarkBlue),
+    // arc + track + text on onSurface (White). Was: card=background,
+    // arc=surface (invisible on card), track=background (invisible on card).
     Card(
         modifier.fillMaxWidth(0.38f),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -65,8 +87,9 @@ fun LoadingSpinnerWithProgress(progress: Int, modifier: Modifier = Modifier) {
                 .padding(vertical = 32.dp)
         ) {
             CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.surface,
-                trackColor = MaterialTheme.colorScheme.background,
+                color = MaterialTheme.colorScheme.onSurface,
+                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f),
+                strokeWidth = 4.dp,
                 modifier = Modifier.size(42.dp)
             )
 
@@ -75,6 +98,7 @@ fun LoadingSpinnerWithProgress(progress: Int, modifier: Modifier = Modifier) {
                     R.string.loading_with_progress,
                     progress
                 ),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = QuickSand,
                 fontSize = 16.sp,
                 modifier = Modifier.padding(top = 16.dp)

@@ -71,6 +71,10 @@ fun ProfileItem(
 
 
         if (onEditClicked != null) {
+            // FIX (aba6585 follow-up): tint was `surface` (= DarkBlue) which is
+            // invisible against the `background` (= DarkBlack) content area.
+            // Switched to `onBackground` (= White in dark mode, Black in light)
+            // so the edit pencil is always high-contrast against the page.
             Icon(
                 imageVector = Icons.Outlined.Create,
                 contentDescription = null,
@@ -80,7 +84,7 @@ fun ProfileItem(
                     .padding(2.dp)
                     .align(Alignment.CenterVertically)
                     .clickable { onEditClicked() },
-                tint = MaterialTheme.colorScheme.surface
+                tint = MaterialTheme.colorScheme.onBackground
             )
         }
     }

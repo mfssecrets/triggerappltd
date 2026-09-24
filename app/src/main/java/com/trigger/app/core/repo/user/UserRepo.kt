@@ -24,6 +24,24 @@ interface UserRepo {
 
     suspend fun getUserFromUID(uid: String): User?
 
+    /**
+     * Read the PUBLIC projection of a user (from `public_users/{uid}`).
+     *
+     * Use this instead of [getUserFromUID] when displaying ANOTHER user's
+     * profile (e.g., ChatDetails screen when you tap a search result).
+     *
+     * Firestore rules restrict `users/{uid}` to owner-only reads, so
+     * `getUserFromUID` will throw `PERMISSION_DENIED` for any user that
+     * isn't the caller. `public_users/{uid}` is signed-in-readable for
+     * everyone, and contains { uid, name, username, profilePic } — enough
+     * to render a profile UI. Private fields (bio, number, lastSeen,
+     * userStatus) are filled with defaults.
+     *
+     * Returns null if the public_users doc doesn't exist (user signed up
+     * but didn't complete onboarding — should not normally happen).
+     */
+    suspend fun getPublicUserFromUID(uid: String): User?
+
     // Full account-deletion pipeline. Callers MUST pass the username so we can
     // free the usernames/{username} reservation (the Firestore rules don't let
     // us read it back without ownership). See UserRepoImpl for the step list.

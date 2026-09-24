@@ -158,6 +158,27 @@ class UserRepoImpl : UserRepo {
             .get().await()
             .toObject<User>()
 
+    override suspend fun getPublicUserFromUID(uid: String): User? = try {
+        // Read from public_users/{uid} — signed-in-readable for everyone.
+        // Falls back gracefully for private fields (bio, number, lastSeen,
+        // userStatus) that aren't in the public projection.
+        val publicDoc = getPublicUserProfileReference(uid).get().await()
+        val data = publicDoc.data ?: return null
+        User(
+            uid = uid,
+            name = data["name"] as? String ?: "",
+            bio = "",  // not in public projection
+            profilePic = data["profilePic"] as? String?,
+            number = "",  // not in public projection
+            lastSeen = 0,  // not in public projection
+            userStatus = UserStatus.HasDataButNotInApp,  // default
+            username = data["username"] as? String ?: ""
+        )
+    } catch (e: Exception) {
+        Timber.e(e, "getPublicUserFromUID: failed for uid=$uid")
+        null
+    }
+
 
     // ----------------------------------------------------------------------------
     // Deprecated: only deletes the `users/{uid}` doc and the Storage pic.

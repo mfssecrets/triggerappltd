@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,7 @@ fun SelectContactScreen(
     val contactsOnTriggerApp by viewModel.contactsOnTriggerApp.collectAsState(initial = null)
     val shouldNavigateToActualChat by viewModel.shouldNavigateToActualChat.collectAsState()
     val usernameSearchResult by viewModel.usernameSearchResult.collectAsState()
+    val searchStatus by viewModel.searchStatus.collectAsState()
     var usernameQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -111,10 +114,6 @@ fun SelectContactScreen(
                 openProfilePic = {},
                 startConversation = { viewModel.startOrResumeConversation(contact) },
                 viewProfile = {
-                    // FIX: tap → view the other user's profile via ChatDetails
-                    // route. chatId is empty (no chat yet) — the screen handles
-                    // this case by showing the user's profile + a "Start chat"
-                    // affordance.
                     navController.navigateSafely(
                         com.trigger.app.core.presentation.ui.ChatDetails(
                             chatId = "",
@@ -123,6 +122,59 @@ fun SelectContactScreen(
                     )
                 }
             )
+        }
+
+        // FIX: show clear feedback below the search field so the user knows
+        // what's happening — was previously showing nothing during the 350ms
+        // debounce OR when the search returned null.
+        when (searchStatus) {
+            SelectContactsViewModel.SearchStatus.TOO_SHORT -> {
+                Text(
+                    text = "Username must be at least 5 characters",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 8.dp, horizontal = 12.dp)
+                )
+            }
+            SelectContactsViewModel.SearchStatus.SEARCHING -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Searching for @$usernameQuery...",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+            SelectContactsViewModel.SearchStatus.NOT_FOUND -> {
+                Text(
+                    text = "No user found for \"@$usernameQuery\". Either the username doesn't exist or it's your own username (you can't chat with yourself).",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 12.dp, horizontal = 12.dp)
+                )
+            }
+            SelectContactsViewModel.SearchStatus.ERROR -> {
+                Text(
+                    text = "Search failed. Check your connection and try again.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 12.dp, horizontal = 12.dp)
+                )
+            }
+            // IDLE + FOUND don't show extra text (FOUND shows the ContactPreview above)
+            SelectContactsViewModel.SearchStatus.IDLE,
+            SelectContactsViewModel.SearchStatus.FOUND -> Unit
         }
 
         if (contactsOnTriggerApp == null) { // Network call hasn't returned yet

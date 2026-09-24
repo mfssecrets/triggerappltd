@@ -26,12 +26,24 @@ class SelectContactsViewModel(
 
     private val _usernameSearchResult = MutableStateFlow<User?>(null)
     val usernameSearchResult: StateFlow<User?> = _usernameSearchResult
-    private var usernameSearchJob: Job? = null
 
     /**
-     * If the user selects someone they are already talking with, return them to their ongoing coveration
-     * { in either scenario, make sure the NavStack is popped to the start }
+     * Status of the username search — drives the UI feedback below the
+     * search field so the user knows what's happening:
+     *   IDLE        → no search yet (initial state OR field cleared)
+     *   TOO_SHORT   → username < 5 chars (rule violation)
+     *   SEARCHING   → 350ms debounce running OR Firestore call in-flight
+     *   FOUND       → username found, ContactPreview shown
+     *   NOT_FOUND   → username doesn't exist (or it's the current user's own)
+     *   ERROR       → network / permission error during search
      */
+    enum class SearchStatus { IDLE, TOO_SHORT, SEARCHING, FOUND, NOT_FOUND, ERROR }
+
+    private val _searchStatus = MutableStateFlow(SearchStatus.IDLE)
+    val searchStatus: StateFlow<SearchStatus> = _searchStatus
+
+    private var usernameSearchJob: Job? = null
+
     fun startOrResumeConversation(newContact: User) = viewModelScope.launch {
         val existingChatID = contactsRepo.checkForPreExistingChat(newContact)
         Timber.d("startOrResumeConversation.existingChatID is $existingChatID")
@@ -49,15 +61,45 @@ class SelectContactsViewModel(
     fun searchByUsername(value: String) {
         val username = value.removePrefix("@").lowercase()
         usernameSearchJob?.cancel()
+
+        // Empty input → reset to IDLE.
+        if (username.isBlank()) {
+            _usernameSearchResult.value = null
+            _searchStatus.value = SearchStatus.IDLE
+            return
+        }
+
+        // Username must be at least 5 chars (Firestore rules require this).
+        if (username.length < 5) {
+            _usernameSearchResult.value = null
+            _searchStatus.value = SearchStatus.TOO_SHORT
+            return
+        }
+
+        // Clear previous result + mark as searching during the 350ms debounce
+        // + the network call.
         _usernameSearchResult.value = null
-        if (username.length < 5) return
+        _searchStatus.value = SearchStatus.SEARCHING
 
         usernameSearchJob = viewModelScope.launch {
-            delay(350)
-            _usernameSearchResult.value = contactsRepo.searchUserByUsername(username)
+            delay(350)  // debounce — avoids spamming Firestore on every keystroke
+            try {
+                val result = contactsRepo.searchUserByUsername(username)
+                if (result == null) {
+                    // Could be: (a) username doesn't exist, (b) it's the current
+                    // user's own username (intentionally hidden — can't chat with
+                    // yourself). Either way, NOT_FOUND.
+                    _searchStatus.value = SearchStatus.NOT_FOUND
+                } else {
+                    _usernameSearchResult.value = result
+                    _searchStatus.value = SearchStatus.FOUND
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "searchByUsername: failed for username=$username")
+                _searchStatus.value = SearchStatus.ERROR
+            }
         }
     }
-
 
     fun resetShouldNavigateToActualChat() {
         _shouldNavigateToActualChat.value = null

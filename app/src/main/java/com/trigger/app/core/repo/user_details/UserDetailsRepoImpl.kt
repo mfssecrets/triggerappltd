@@ -196,8 +196,10 @@ class UserDetailsRepoImpl : UserDetailsRepo {
             } catch (e: Exception) {
                 Timber.e(e, "updateUserProfilePic: Storage upload failed for userID=$userID")
                 // FIX: surface the error — was swallowed by .catch() at flow end.
+                // Don't call awaitClose + return — just emit + close the channel
+                // so the consumer's .collect{} completes cleanly.
                 trySend(TaskState.DONE.ERROR(R.string.profile_pic_upload_failed))
-                awaitClose { /* no-op */ }
+                close()
                 return@callbackFlow
             }
 

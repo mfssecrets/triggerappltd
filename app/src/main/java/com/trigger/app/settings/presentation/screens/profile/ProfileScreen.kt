@@ -285,8 +285,16 @@ fun ProfileScreen(
                     showProfilePicPopup = false
                 }
 
-            if (showProfilePicPopup)
-                pickImageLauncher.launch(DefaultCropContract)
+            // FIX: was `if (showProfilePicPopup) pickImageLauncher.launch(...)`
+            // directly in the Composable body — that RE-LAUNCHES the cropper
+            // on every recomposition while the flag is true (which happens a
+            // lot during UI updates). Wrap in LaunchedEffect so it fires ONLY
+            // once when the flag flips from false → true.
+            LaunchedEffect(showProfilePicPopup) {
+                if (showProfilePicPopup) {
+                    pickImageLauncher.launch(DefaultCropContract)
+                }
+            }
         }
 
         // Profile is now a bottom-nav tab — render the bottom bar so users can

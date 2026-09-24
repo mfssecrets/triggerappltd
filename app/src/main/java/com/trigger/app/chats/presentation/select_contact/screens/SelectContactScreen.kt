@@ -133,14 +133,14 @@ fun SelectContactScreen(
                     text = "Username must be at least 5 characters",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(top = 8.dp, horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(top = 8.dp)
                 )
             }
             SelectContactsViewModel.SearchStatus.SEARCHING -> {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp, horizontal = 12.dp),
+                        .padding(horizontal = 12.dp).padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     androidx.compose.material3.CircularProgressIndicator(
@@ -161,7 +161,7 @@ fun SelectContactScreen(
                     text = "No user found for \"@$usernameQuery\". Either the username doesn't exist or it's your own username (you can't chat with yourself).",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(top = 12.dp, horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(top = 12.dp)
                 )
             }
             SelectContactsViewModel.SearchStatus.ERROR -> {
@@ -169,7 +169,7 @@ fun SelectContactScreen(
                     text = "Search failed. Check your connection and try again.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 12.dp, horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(top = 12.dp)
                 )
             }
             // IDLE + FOUND don't show extra text (FOUND shows the ContactPreview above)
